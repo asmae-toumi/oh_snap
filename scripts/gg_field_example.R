@@ -1,5 +1,6 @@
+library(tidyverse)
 
-source("gg_field.R")
+source("scripts/gg_field.R")
 
 ## reminders: 
 ### x-axis goes from 0 (back of left endzone) to 120 (back of right end zone)
@@ -21,7 +22,7 @@ field_no_buffer
 
 
 ## example frame taken from a play in the dataset
-ex_frame <- readr::read_csv(file='../data/gg_field_example_data.csv', col_types = cols()) %>% 
+ex_frame <- readr::read_csv("data/gg_field_example_data.csv") %>% 
             janitor::clean_names()
 
 ex_frame <- ex_frame %>% mutate(team_colors = case_when(
