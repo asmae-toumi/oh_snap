@@ -4,13 +4,15 @@ library(janitor)
 library(arrow)
 
 
-# Import ------------------------------------------------------------------
-
+# Games -------------------------------------------------------------------
 
 games <- 
   read_csv("data/games.csv") %>% 
   clean_names() %>% 
   mutate(game_date = lubridate::mdy(game_date))
+
+
+# Players -----------------------------------------------------------------
 
 players <- 
   read_csv("data/players.csv") %>% 
@@ -32,11 +34,43 @@ players <- players %>%
     )
   )
 
+
+# Plays -------------------------------------------------------------------
+
+
+plays <- 
+  read_csv("data/plays.csv") %>% 
+  clean_names()
+
+plays <- plays %>% 
+  separate(penalty_codes, c("pen_1", "pen_2", "pen_3")) %>% 
+  separate(penalty_jersey_numbers, c("pen_team_1", "pen_jersey_1",
+                                     "pen_team_2", "pen_jersey_2",
+                                     "pen_team_3", "pen_jersey_3")) 
+
+# TO DO: join player ID
+
+
+# Players -----------------------------------------------------------------
+
+players <- 
+  read_csv("data/players.csv") %>% 
+  clean_names()
+
+
+# All weeks ---------------------------------------------------------------
+
 all_weeks <- 
   read_parquet("data/all_weeks.parquet") %>% 
   clean_names()
 
+# Standardizing tracking data so its always in direction of offense vs raw on-field coordinates:
+all_weeks <- all_weeks %>%
+  mutate(x = ifelse(play_direction == "left", 120-x, x),
+         y = ifelse(play_direction == "left", 160/3 - y, y))
 
+
+#TO DO: gg_football()
 
 
 
