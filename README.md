@@ -1,6 +1,9 @@
-# oh_snap
+# Oh Snap!
+
 NFL Big Data Bowl 2021
 
 # Data
 
-The data is available in the release. 
+The data is in the release titled `data`. You can also get it via the **piggyback** package.
+
+
