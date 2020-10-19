@@ -40,7 +40,9 @@ players <- players %>%
 
 plays <- 
   read_csv("data/plays.csv") %>% 
-  clean_names()
+  clean_names() %>% 
+  # There are 2 of these. Not sure what to do with them... drop them.
+  filter(!is.na(pass_result))
 
 plays <- plays %>% 
   separate(penalty_codes, c("pen_1", "pen_2", "pen_3")) %>% 
