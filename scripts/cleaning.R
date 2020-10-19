@@ -11,7 +11,6 @@ games <-
   clean_names() %>% 
   mutate(game_date = lubridate::mdy(game_date))
 
-
 # Players -----------------------------------------------------------------
 
 players <- 
@@ -22,24 +21,18 @@ players <-
                                                  exact = F)) 
 
 
+positions <- read_csv("data/positions.csv")
 
-defense <- c("CB", "DB", "DE", "DT", "FS", "ILB", "LB", "MLB", "NT", "OLB", "S", "SS")
-offense <- c("FB", "HB", "QB", "RB", "TE", "WR")
-special <- c("K", "LS", "P")
+players <- players %>%
+  left_join(positions %>% select(position, category = side))
 
-players <- players %>% 
-  mutate(
-    category = case_when(
-      position %in% defense ~ "defense", 
-      position %in% offense ~ "offense", 
-      position %in% special ~ "special"
-    )
-  )
+# Target receivers --------------------------------------------------------
 
-# # Proposing this as an alternative to the above.
-# positions <- read_csv("data/positions.csv")
-# players <- players %>% 
-#   left_join(positions %>% select(position, category = side))
+target <- 
+  read_csv("data/targetedReciever.csv") %>% 
+  clean_names() %>% 
+  left_join(players %>% select(target_nfl_id = nfl_id, target_display_name = display_name))
+
 
 # Plays -------------------------------------------------------------------
 
@@ -101,12 +94,14 @@ plays <- plays %>%
 
 all_weeks <- 
   read_parquet("data/all_weeks.parquet") %>% 
-  clean_names()
+  clean_names() %>% 
+  left_join(target, by = c("game_id", "play_id"))
 
 # Standardizing tracking data so its always in direction of offense vs raw on-field coordinates:
 all_weeks <- all_weeks %>%
   mutate(x = ifelse(play_direction == "left", 120-x, x),
          y = ifelse(play_direction == "left", 160/3 - y, y))
+
 
 
 
