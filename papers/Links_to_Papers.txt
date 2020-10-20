@@ -1,0 +1,16 @@
+Random Walk/Correlated Random Walk
+https://mysite.science.uottawa.ca/gblouin/articles/086_2013_random_walk.pdf
+
+*Check PDF in papers called Generalizing_the_first-difference_correlated_rando*
+
+https://nwfsc-timeseries.github.io/atsa-labs/sec-tslab-random-walks-rw.html
+
+https://becarioprecario.bitbucket.io/inla-gitbook/ch-temporal.html
+
+http://www.lukebornn.com/papers/director_jclim_2015.pdf
+
+
+Other relevant articles
+http://www.lukebornn.com/papers/damour_ssac_2015.pdf
+http://www.lukebornn.com/papers/cervone_ssac_2016.pdf
+http://www.lukebornn.com/papers/liu_shm_2018.pdf
