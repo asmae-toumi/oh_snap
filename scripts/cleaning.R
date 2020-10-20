@@ -7,40 +7,41 @@ library(arrow)
 # Games -------------------------------------------------------------------
 
 games <- 
-  read_csv("data/games.csv") %>% 
+  read_csv(here::here("data/games.csv")) %>% 
   clean_names() %>% 
   mutate(game_date = lubridate::mdy(game_date))
-
 
 # Players -----------------------------------------------------------------
 
 players <- 
-  read_csv("data/players.csv") %>% 
+  read_csv(here::here("data/players.csv")) %>% 
   clean_names() %>% 
   mutate(birth_date = lubridate::parse_date_time(birth_date, 
                                                  orders = c("y-m-d", "m/d/y"),
                                                  exact = F)) 
 
-defense <- c("CB", "DB", "DE", "DT", "FS", "ILB", "LB", "MLB", "NT", "OLB", "S", "SS")
-offense <- c("FB", "HB", "QB", "RB", "TE", "WR")
-special <- c("K", "LS", "P")
 
-players <- players %>% 
-  mutate(
-    category = case_when(
-      position %in% defense ~ "defense", 
-      position %in% offense ~ "offense", 
-      position %in% special ~ "special"
-    )
-  )
+positions <- read_csv("data/positions.csv")
+
+players <- players %>%
+  left_join(positions %>% select(position, category = side))
+
+# Target receivers --------------------------------------------------------
+
+target <- 
+  read_csv("data/targetedReciever.csv") %>% 
+  clean_names() %>% 
+  left_join(players %>% select(target_nfl_id = nfl_id, target_display_name = display_name))
 
 
 # Plays -------------------------------------------------------------------
 
 
 plays <- 
-  read_csv("data/plays.csv") %>% 
-  clean_names()
+  read_csv(here::here("data/plays.csv")) %>% 
+  clean_names() %>% 
+  # There are 2 of these. Not sure what to do with them... drop them.
+  filter(!is.na(pass_result))
 
 plays <- plays %>% 
   separate(penalty_codes, c("pen_1", "pen_2", "pen_3")) %>% 
@@ -89,24 +90,18 @@ plays <- plays %>%
     )
   ) 
 
-
-# Players -----------------------------------------------------------------
-
-players <- 
-  read_csv("data/players.csv") %>% 
-  clean_names()
-
-
 # All weeks ---------------------------------------------------------------
 
 all_weeks <- 
-  read_parquet("data/all_weeks.parquet") %>% 
-  clean_names()
+  read_parquet(here::here("data/all_weeks.parquet")) %>% 
+  clean_names() %>% 
+  left_join(target, by = c("game_id", "play_id"))
 
 # Standardizing tracking data so its always in direction of offense vs raw on-field coordinates:
 all_weeks <- all_weeks %>%
   mutate(x = ifelse(play_direction == "left", 120-x, x),
          y = ifelse(play_direction == "left", 160/3 - y, y))
+
 
 
 
