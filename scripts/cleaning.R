@@ -95,7 +95,7 @@ plays <- plays %>%
 all_weeks <- 
   read_parquet(here::here("data/all_weeks.parquet")) %>% 
   clean_names() %>% 
-    left_join(target, by = c("game_id", "play_id"))
+  left_join(target, by = c("game_id", "play_id"))
 
 # Standardizing tracking data so its always in direction of offense vs raw on-field coordinates:
 all_weeks <- all_weeks %>%
