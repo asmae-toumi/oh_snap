@@ -7,7 +7,7 @@ library(arrow)
 # Games -------------------------------------------------------------------
 
 games <- 
-  read_csv("data/games.csv") %>% 
+  read_csv(here::here("data/games.csv")) %>% 
   clean_names() %>% 
   mutate(game_date = lubridate::mdy(game_date))
 
@@ -15,7 +15,7 @@ games <-
 # Players -----------------------------------------------------------------
 
 players <- 
-  read_csv("data/players.csv") %>% 
+  read_csv(here::here("data/players.csv")) %>% 
   clean_names() %>% 
   mutate(birth_date = lubridate::parse_date_time(birth_date, 
                                                  orders = c("y-m-d", "m/d/y"),
@@ -45,7 +45,7 @@ players <- players %>%
 
 
 plays <- 
-  read_csv("data/plays.csv") %>% 
+  read_csv(here::here("data/plays.csv")) %>% 
   clean_names() %>% 
   # There are 2 of these. Not sure what to do with them... drop them.
   filter(!is.na(pass_result))
@@ -100,7 +100,7 @@ plays <- plays %>%
 # All weeks ---------------------------------------------------------------
 
 all_weeks <- 
-  read_parquet("data/all_weeks.parquet") %>% 
+  read_parquet(here::here("data/all_weeks.parquet")) %>% 
   clean_names()
 
 # Standardizing tracking data so its always in direction of offense vs raw on-field coordinates:
