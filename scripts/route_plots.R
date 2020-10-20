@@ -1,14 +1,33 @@
 
-## read in games, plays, and tracking data first
 library(ggplot2)
 
 ## these two only needed for heatmaps, not regular route plots
 library(fields)
 library(rayshader)
 
+## read in data
+plays <- 
+  read_csv("data/plays.csv") %>% 
+  clean_names() %>% 
+  # There are 2 of these. Not sure what to do with them... drop them.
+  filter(!is.na(pass_result))
+
+games <- 
+  read_csv("data/games.csv") %>% 
+  clean_names() %>% 
+  mutate(game_date = lubridate::mdy(game_date))
+
+
+## tracking data - do not standardize positions!
+all_weeks <- 
+  read_parquet("data/all_weeks.parquet") %>% 
+  clean_names() %>% 
+  select(-week)
+
 #merging plays and tracking data
 all_merged <- inner_join(games,plays,
                         by = c("game_id" = "game_id"))
+
 
 #merging games data to previously merged frame
 all_merged <- inner_join(all_merged,
