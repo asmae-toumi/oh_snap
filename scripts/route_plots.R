@@ -1,9 +1,13 @@
 
 library(ggplot2)
 
+## raster package needed for newer heatmap, but don't load - it overrides dplyr::select!
+#install.packages(raster)
+
 ## these two only needed for heatmaps, not regular route plots
 library(fields)
 library(rayshader)
+
 
 ## read in data
 plays <- 
@@ -49,14 +53,14 @@ wheel <- all_merged %>%
 ## show all wheel routes
 wheel %>% ggplot() + 
   geom_line(aes(x=x_from_los, y=y, group=interaction(play_id, nfl_id))) + 
-  ggtitle("Wheel Routes from LOS, Week 1") + labs(x="Yards from LOS")
+  ggtitle("Wheel Routes from LOS, Weeks 1-8") + labs(x="Yards from LOS")
 
 
 ## wheel routes broken up by pass result (C=catch, I=incomplete, IN=intercepted)
 wheel %>% ggplot() + 
   geom_line(aes(x=x_from_los, y=y, group=interaction(play_id, nfl_id))) + 
   facet_wrap(~pass_result) + 
-  ggtitle("Wheel Routes from LOS, Week 1") + labs(x="Yards from LOS")
+  ggtitle("Wheel Routes from LOS, Weeks 1-8, by Pass Result") + labs(x="Yards from LOS")
 
 
 
@@ -87,23 +91,70 @@ all_merged %>%
   labs(x="Yards from LOS")
 
 
-################################################################
-## heatmap code below
-## warning - it involves base R code!!
-################################################################
-
 
 ## find extent of left-to-right positions
 x_range <- wheel %>% 
-            summarise(xmin=min(x_from_los), xmax=max(x_from_los)) %>% 
-            unlist
+  summarise(xmin=min(x_from_los), xmax=max(x_from_los)) %>% 
+  unlist
 
 ## cover whole field y range, plus 2 yards out-of bounds
 y_range <- c(-2, 56)
 
+######################################################
+## preferred heatmap code with raster package
+######################################################
+
+## 1-yard x 1-yard resolution
+xres <- 1
+yres <- 1
+
+nxcells <- ceiling((x_range[2]-x_range[1])/xres)
+nycells <- ceiling((y_range[2]-y_range[1])/yres)
+
+heatgrid_raster <- raster::raster(xmn=x_range[1], xmx=x_range[2], 
+                                ymn=y_range[1], ymx=y_range[2], 
+                                ncols=nxcells, nrows=nycells)
+
+## initialize all cell counts as 0
+raster::values(heatgrid_raster) <- 0
+
+## compute number of points (player positions) that fall in each cell
+wheel_pos <- wheel %>% select(x_from_los, y) %>% as.matrix
+
+cell_counts <- raster::cellFromXY(heatgrid_raster, wheel_pos) %>% table
+
+
+## fill in cell counts to raster object
+heatgrid_raster[as.numeric(names(cell_counts))] <- cell_counts
+
+
+## split up count colors so we can see patterns more easily
+## these could change a lot depending on data, grid resolution! 
+brks <- c(0, 1, 5, 10, 25, 50, 100, 200, 300, 400, 500)
+cols <- length(brks) %>% heat.colors %>% rev
+
+## base R version of plot
+plot(heatgrid_raster, col=cols, 
+     breaks=brks, xlab='Yards from LOS',
+     main="Heatmap of Wheel Routes, Weeks 1-8")
+
+## ggplot version of plot(works fine but could be improved)
+heatgrid_df <- data.frame(raster::rasterToPoints(heatgrid_raster))
+
+gg_heat_raster <- ggplot() + 
+  geom_raster(data=heatgrid_df, aes(x=x, y=y, fill=layer)) + 
+  scale_fill_gradientn(colours=cols, values=brks/max(brks)) + 
+  ggtitle("Heatmap of Wheel Routes, Weeks 1-8")
+
+rayshader::plot_gg(gg_heat_raster)
+
+######################################################
+## alternative heatmap method (less efficient)
+######################################################
 ## make grid of 1-yard x 1-yard cells
 heatgrid <- expand.grid(x=seq(x_range[1],x_range[2], by=1), 
                         y=seq(y_range[1], y_range[2],by=1))
+
 
 ## check which grid cell a player falls in
 check_grid_cell <- function(xpos, ypos, grd){
