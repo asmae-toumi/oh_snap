@@ -2,3 +2,4 @@
 oh_snap.Rproj
 .DS_Store
 data/all_weeks.parquet
+data/week1.csv
