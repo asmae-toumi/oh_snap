@@ -1,8 +1,10 @@
 
+# Load raster first to let dplyr select mask it
+library(raster)
+library(tidyverse)
+library(janitor)
+library(arrow)
 library(ggplot2)
-
-## raster package needed for newer heatmap, but don't load - it overrides dplyr::select!
-#install.packages(raster)
 
 ## these two only needed for heatmaps, not regular route plots
 library(fields)
@@ -23,10 +25,11 @@ games <-
 
 
 ## tracking data - do not standardize positions!
-all_weeks <- 
-  read_parquet("data/all_weeks.parquet") %>% 
-  clean_names() %>% 
-  select(-week)
+all_weeks <- read_csv("data/week1.csv") %>% clean_names() #  for simplicity
+# all_weeks <- 
+#   read_parquet("data/all_weeks.parquet") %>% 
+#   clean_names() %>% 
+#   select(-week)
 
 #merging plays and tracking data
 all_merged <- inner_join(games,plays,
@@ -51,14 +54,15 @@ wheel <- all_merged %>%
             )) 
 
 ## show all wheel routes
-wheel %>% ggplot() + 
-  geom_line(aes(x=x_from_los, y=y, group=interaction(play_id, nfl_id))) + 
+wheel %>% 
+  ggplot() + 
+  geom_path(aes(x=x_from_los, y=y, group=interaction(game_id, play_id, nfl_id))) + 
   ggtitle("Wheel Routes from LOS, Weeks 1-8") + labs(x="Yards from LOS")
 
 
 ## wheel routes broken up by pass result (C=catch, I=incomplete, IN=intercepted)
 wheel %>% ggplot() + 
-  geom_line(aes(x=x_from_los, y=y, group=interaction(play_id, nfl_id))) + 
+  geom_path(aes(x=x_from_los, y=y, group=interaction(game_id, play_id, nfl_id))) + 
   facet_wrap(~pass_result) + 
   ggtitle("Wheel Routes from LOS, Weeks 1-8, by Pass Result") + labs(x="Yards from LOS")
 
@@ -82,7 +86,7 @@ all_merged %>%
   ggplot() + 
   
   ## separate lines by play and player
-  geom_line(aes(x=x_from_los, y=y, group=interaction(play_id, nfl_id))) + 
+  geom_path(aes(x=x_from_los, y=y, group=interaction(game_id, play_id, nfl_id))) + 
   
   ## split up different routes
   facet_wrap(~route) + 
@@ -110,6 +114,7 @@ yres <- 1
 
 nxcells <- ceiling((x_range[2]-x_range[1])/xres)
 nycells <- ceiling((y_range[2]-y_range[1])/yres)
+
 
 heatgrid_raster <- raster::raster(xmn=x_range[1], xmx=x_range[2], 
                                 ymn=y_range[1], ymx=y_range[2], 
