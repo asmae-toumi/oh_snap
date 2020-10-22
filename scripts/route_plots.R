@@ -128,12 +128,14 @@ cell_counts <- raster::cellFromXY(heatgrid_raster, wheel_pos) %>% table
 heatgrid_raster[as.numeric(names(cell_counts))] <- cell_counts
 
 
-## split up count colors so we can see patterns more easily
-## these could change a lot depending on data, grid resolution! 
-brks <- c(0, 1, 5, 10, 25, 50, 100, 200, 300, 400, 500)
+## use log-spaced so we can see patterns more easily
+## these values could change a lot depending on data, grid resolution! 
+range(cell_counts)
+
+brks <- c(0, exp(seq(log(1), log(max(cell_counts)), length.out=9)))
 cols <- length(brks) %>% heat.colors %>% rev
 
-## base R version of plot
+## base R version of plot (better resolution IMO)
 plot(heatgrid_raster, col=cols, 
      breaks=brks, xlab='Yards from LOS',
      main="Heatmap of Wheel Routes, Weeks 1-8")
@@ -146,7 +148,40 @@ gg_heat_raster <- ggplot() +
   scale_fill_gradientn(colours=cols, values=brks/max(brks)) + 
   ggtitle("Heatmap of Wheel Routes, Weeks 1-8")
 
+gg_heat_raster
+
 rayshader::plot_gg(gg_heat_raster)
+
+###############################################
+## use same grid for GO routes
+###############################################
+
+go <- all_merged %>% 
+  filter(route=='GO') %>% 
+  drop_na(route) %>% 
+  
+  ## standardize to LOS
+  mutate(x_from_los = case_when(
+    play_direction == "right" ~ x - absolute_yardline_number,
+    play_direction == "left" ~ absolute_yardline_number - x
+  )) 
+
+## compute number of points (player positions) that fall in each cell
+go_pos <- go %>% select(x_from_los, y) %>% as.matrix
+
+## reset all cell counts to 0
+raster::values(heatgrid_raster) <- 0
+
+## repopulate cells
+cell_counts <- raster::cellFromXY(heatgrid_raster, go_pos) %>% table
+heatgrid_raster[as.numeric(names(cell_counts))] <- cell_counts
+
+brks <- c(0, exp(seq(log(1), log(max(cell_counts)), length.out=9)))
+cols <- length(brks) %>% heat.colors %>% rev
+
+plot(heatgrid_raster, col=cols, 
+     breaks=brks, xlab='Yards from LOS',
+     main="Heatmap of GO Routes, All weeks")
 
 ######################################################
 ## alternative heatmap method (less efficient)
