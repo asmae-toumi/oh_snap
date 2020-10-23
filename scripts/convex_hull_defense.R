@@ -124,7 +124,34 @@ calc_chull_area <- function(playdf, gameid, playid){
 calc_chull_area(playdf=week1, gameid = "2018090600", playid = 75)
 
 ## number of unique plays
-nplays <- week1 %>% select(play_id, game_id) %>% n_distinct
+nplays <- week1 %>% distinct(game_id, play_id) %>% nrow
 
+distinct_plays <- week1 %>% distinct(game_id, play_id)
 
-## how to apply the calc_chull_area function to all week1 plays??
+## calculate for all week 1 plays - would love to know a tidier way to do this!!
+ch_area_vec <- rep(NA, nplays)
+for(p in 1:nplays){
+  ch_area_vec[p] <- calc_chull_area(week1, distinct_plays$game_id[p], 
+                                    distinct_plays$play_id[p])
+  print(p)
+}
+
+distinct_plays$chull_area <- ch_area_vec
+
+## add coverage info
+distinct_plays <- distinct_plays %>% inner_join(coverage)
+
+## plot histogram of areas by coverage type
+distinct_plays %>% 
+  ggplot() + 
+  geom_histogram(aes(x=chull_area)) + 
+  facet_wrap(~coverage) + 
+  labs(x='Area of Convex Hull of Defenders ') + 
+  ggtitle("Defensive Convex Hull Area, by Coverage Type")
+
+## compare all densities on same plot
+distinct_plays %>% 
+  ggplot() + 
+  geom_density(aes(x=chull_area, col=factor(coverage)), position="stack") + 
+  labs(x='Area of Convex Hull of Defenders ') + 
+  ggtitle("Defensive Convex Hull Area, by Coverage Type")
