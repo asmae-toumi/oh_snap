@@ -265,6 +265,5 @@ animate_play <-
       renderer = gganimate::gifski_renderer(path),
       end_pause = end_pause * fps
     )
-    anim
   }
 
