@@ -1,28 +1,7 @@
-## ----setup, include=FALSE
-knitr::opts_chunk$set(
-  echo = TRUE,
-  message = FALSE,
-  warning = FALSE
-)
-# Run this with the cursor in the script window to convert to an Rmd
-# rstudioapi::getActiveDocumentContext()$path %>% styler::style_file() %>% knitr::spin()
 
-## ----packages
+
 library(tidyverse)
-library(janitor)
-# source(here::here("scripts", "cleaning.R"))
 
-# # Choose single play (highest EPA) for example.
-# example_play <-
-#   plays %>%
-#   inner_join(games) %>%
-#   # arrange(desc(epa)) %>%
-#   slice_max(epa) %>% # just found out about this black magic
-#   select(week, game_id, play_id, epa, play_description)
-# example_play
-
-
-## ----imports, cache=FALSE
 positions <- read_csv(here::here("data/positions.csv"))
 # tracking <- read_csv(here::here("data/highest_epa_example_data.csv"))
 # tracking <- read_csv(here::here("data/week1.csv")) %>% clean_names()
@@ -44,7 +23,6 @@ plays <-
   janitor::clean_names() %>%
   filter(!is.na(pass_result))
 
-## ---------------
 ball <- tracking %>% filter(display_name == "Football")
 
 tracking <-
@@ -53,7 +31,6 @@ tracking <-
   inner_join(ball %>% select(game_id, play_id, frame_id, ball_x = x, ball_y = y))
 tracking
 
-## ---------------
 snap_frames <- tracking %>% filter(event == "ball_snap")
 # Reference: https://github.com/danichusfu/RouteIdentification/blob/master/R/read_routes_from_csv.R
 play_direction <-
@@ -88,7 +65,6 @@ tracking <-
   select(-matches('_scrim$'), possession)
 tracking
 
-## ---------------
 # Filter out stuff before the snap and after the pass has arrived.
 # My attempt at making a full list of events where the route should be considered over.
 # This is like https://github.com/danichusfu/RouteIdentification/blob/master/R/cut_plays.R.
@@ -201,13 +177,6 @@ receivers_at_snap <-
   )
 receivers_at_snap
 
-#' What are the most common route pairs?
-#' 
-#' 1. HITCH-FLAT
-#' 2. GO-FLAT
-#' 3. GO-OUT
-#' 
-## ----
 # Figure out where TEs usually line up so that we can filter out players in the backfield
 # receivers_at_snap %>% filter(position == 'TE') %>% mutate(across(y_relative, ~cut(.x, breaks = seq.int(-8, 8)))) %>% count(y_relative)
 # receivers_at_snap <- receivers_at_snap %>% filter(abs(y_relative) > 3)
@@ -229,7 +198,6 @@ route_combos_n <-
 route_combos_n
 
 # Only want the pairs.
-# Should probably also consider 3, 4, and even 5 player combos.
 route_combos_n_group <- 
   route_combos_n %>% 
   filter(n_route >= 2L, n_route <= 4L) %>% 
@@ -241,10 +209,6 @@ route_combos_n_group %>% filter(route_combo == 'SLANT-OUT')
 route_combos_n %>% group_by(n_route) %>% summarize(across(n, sum)) %>% ungroup()
 route_combos_n %>% filter(n_route == 5L)
 
-#'
-#'
-#'
-## ----
 n_sample <- 20L
 route_combos_n_group_sample <- route_combos_n_group %>% head(n_sample)
 route_combos_n_group_sample
@@ -295,30 +259,24 @@ receivers_at_snap_group <-
   inner_join(route_combos_group)
 receivers_at_snap_group
 
-identify_close_receivers <- function(data) {
-  data <-
-    tibble::tribble(
-       ~nfl_id,  ~display_name, ~position,                 ~x,               ~y,            ~dist,  ~route, ~idx_y_side,
-      2495454L,  "Julio Jones",      "WR", -0.579999999999998, 9.19333333333334, 17.3351261893301, "HITCH",          1L,
-      2533040L, "Mohamed Sanu",      "WR",                  0, 17.1733333333333, 9.33407735129723, "HITCH",          2L
-      )
-  data <-
-    
-}
-
-receivers_at_snap_group %>% 
-  filter(n_route == 3L) %>% 
-  select(game_id, play_id, y_side, route_combo, nfl_id, display_name, position, x, y, dist, route, idx_y_side) %>% 
-  nest(data = c(nfl_id, display_name, position, x, y, dist, route, idx_y_side)) %>% 
-  slice(1) %>% 
-  select(data) %>% 
-  unnest(data) %>% 
-  clipr::write_clip()
-
-receivers_at_snap_group %>% 
-  select(game_id, play_id, y_side, idx_y_side, x, y) %>% 
-  pivot_wider(names_from = idx_y_side, values_from = c(x, y), names_prefix = 'rec') %>% 
-  
+# # TODO: Make a function to identify "close" receivers at the ball snap.
+# identify_close_receivers <- function(data) {
+#   data <-
+#     tibble::tribble(
+#        ~nfl_id,  ~display_name, ~position,                 ~x,               ~y,            ~dist,  ~route, ~idx_y_side,
+#       2495454L,  "Julio Jones",      "WR", -0.579999999999998, 9.19333333333334, 17.3351261893301, "HITCH",          1L,
+#       2533040L, "Mohamed Sanu",      "WR",                  0, 17.1733333333333, 9.33407735129723, "HITCH",          2L
+#       )
+#   data <-
+#     
+# }
+# 
+# receivers_at_snap_group %>% 
+#   filter(n_route == 3L) %>% 
+#   select(game_id, play_id, y_side, route_combo, nfl_id, display_name, position, x, y, dist, route, idx_y_side) %>% 
+#   nest(data = c(nfl_id, display_name, position, x, y, dist, route, idx_y_side)) %>% 
+#   mutate(data = map(data, identify_close_receivers)) %>% 
+#   unnest(data
 
 n_game <-
   games %>% 
@@ -330,7 +288,6 @@ n_game
 route_combos_n_group %>% 
   mutate(pct = 100 * n / !!n_game) %>% 
   head(n_sample)
-
 
 tracking_cleaned_group <-
   tracking_cleaned %>%
@@ -347,7 +304,9 @@ tracking_cleaned_group <-
         n_route
       )
   ) %>%
-  mutate(across(c(y, ball_y), ~case_when(y_side == 'below' ~ !!y_max - .x, TRUE ~ .x)))
+  mutate(
+    across(c(y, ball_y), ~case_when(y_side == 'below' ~ !!y_max - .x, TRUE ~ .x))
+  )
 tracking_cleaned_group
 
 tracking_cleaned_group_agg <-
@@ -358,7 +317,6 @@ tracking_cleaned_group_agg <-
   summarize(across(c(x, y), mean)) %>% 
   ungroup()
 tracking_cleaned_group_agg
-
 
 tracking_cleaned_pair_agg %>% 
   mutate(
@@ -380,99 +338,3 @@ tracking_cleaned_pair %>%
   aes(x = x, y = y, group = grp, color = route) +
   geom_path() +
   facet_wrap(~route_combo)
-
-
-#' Filter down to just a few of the route combos to make a plot.
-#' Here we'll look at the combos with the max number of routes, and just a few cases of these.
-## ---------------
-# `max(n_route)` is 5 for weeks 1 - 6, but could be up to 6.
-route_combos_n %>% filter(n_route == max(n_route))
-tracking_max_routes <-
-  tracking_cleaned %>% 
-  semi_join(
-    route_combos %>% 
-      filter(n_route == max(n_route)) %>% 
-      head(3)
-  )
-tracking_max_routes
-
-snap_frames_max_routes <- tracking_max_routes %>% filter(event == "ball_snap")
-throw_frames_max_routes <- tracking_max_routes %>% filter(event == "pass_forward")
-end_frames_max_routes <- tracking_max_routes %>% filter(event %in% events_end_route)
-frames_annotate_max_routes <- list(snap_frames_max_routes, throw_frames_max_routes, end_frames_max_routes) %>% reduce(bind_rows)
-shapes <- c("ball_snap" = 21, "pass_forward" = 22, set_names(rep(23, length(events_end_route)), events_end_route))
-
-viz_max_routes <-
-  tracking_max_routes %>% 
-  ggplot() +
-  theme_minimal() +
-  facet_wrap(~play_id, scales = 'free') %>% 
-  aes(x = x, y = y, group = nfl_id, color = side) +
-  geom_path(data = tracking_max_routes) +
-  geom_point(
-    data = frames_annotate_max_routes,
-    aes(fill = side, shape = event),
-    # shape = 21,
-    size = 6,
-    color = "black"
-  ) +
-  ggrepel::geom_label_repel(
-    data = 
-      end_frames_max_routes %>% 
-      filter(!is.na(route)),
-    aes(label = route),
-    # shape = 21,
-    # arrow = arrow(length = unit(0.2, 'npc')),
-    hjust = -2,
-    size = 5,
-    color = "black"
-  ) +
-  scale_shape_manual(values = shapes) +
-  geom_text(
-    data = frames_annotate_max_routes,
-    aes(label = jersey_number),
-    size = 3,
-    color = "white"
-  )
-viz_max_routes
-
-## ---------------
-throw_frame <- tracking_cleaned %>% filter(event == "pass_forward")
-# Probably need a full list of events for pass arriving...
-end_frame <- tracking_cleaned %>% filter(event %in% events_end_route)
-frames_annotate <- list(snap_frame, throw_frame, end_frame) %>% reduce(bind_rows)
-
-
-## ---------------
-# field <- gg_field() # Couldn"t get this to work with the rest of the ggplot latyers...
-shapes <- c("ball_snap" = 21, "pass_forward" = 22, set_names(rep(23, length(events_end_route)), events_end_route))
-viz <-
-  # field +
-  ggplot() +
-  theme_minimal() +
-  aes(x = x, y = y, group = nfl_id, color = side) +
-  geom_path(data = tracking_cleaned) +
-  geom_point(
-    data = frames_annotate,
-    aes(fill = side, shape = event),
-    # shape = 21,
-    size = 6,
-    color = "black"
-  ) +
-  ggrepel::geom_label_repel(
-    data = end_frame %>% filter(!is.na(route)),
-    aes(label = route),
-    # shape = 21,
-    # arrow = arrow(length = unit(0.2, 'npc')),
-    hjust = -2,
-    size = 5,
-    color = "black"
-  ) +
-  scale_shape_manual(values = shapes) +
-  geom_text(
-    data = frames_annotate,
-    aes(label = jersey_number),
-    size = 3,
-    color = "white"
-  )
-viz
