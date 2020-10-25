@@ -152,6 +152,6 @@ distinct_plays %>%
 ## compare all densities on same plot
 distinct_plays %>% 
   ggplot() + 
-  geom_density(aes(x=chull_area, col=factor(coverage)), position="stack") + 
+  geom_density(aes(x=chull_area, col=factor(coverage))) + 
   labs(x='Area of Convex Hull of Defenders ') + 
   ggtitle("Defensive Convex Hull Area, by Coverage Type")
