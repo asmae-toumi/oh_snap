@@ -17,7 +17,7 @@ source("scripts/read_files.R")
 #' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method
 #' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
-.compute_min_distances <- function(data) {
+compute_min_distances <- function(data) {
   o <- data %>%
     dplyr::filter(side == "O") %>%
     .coerce_to_mat()
@@ -133,7 +133,7 @@ animate_play <-
         dplyr::filter(position != "QB") %>%
         dplyr::select(game_id, play_id, nfl_id, frame_id, side, x, y) %>%
         tidyr::nest(data = -c(frame_id)) %>%
-        dplyr::mutate(data = purrr::map(data, .compute_min_distances)) %>%
+        dplyr::mutate(data = purrr::map(data, compute_min_distances)) %>%
         tidyr::unnest(data)
     }
     
