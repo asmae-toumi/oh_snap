@@ -1,51 +1,28 @@
 
 library(tidyverse)
 source("scripts/gg_field.R")
-
-read_colors <- memoise::memoise({function() {
-  file.path("data", "teamcolors.csv") %>% 
-    read_csv()
-}})
-
-read_positions <- memoise::memoise({function() {
-  file.path("data", "positions.csv") %>% 
-    read_csv()
-}})
-
-read_plays <- memoise::memoise({function() {
-  file.path("data", "plays.csv") %>% 
-    read_csv() %>%
-    janitor::clean_names() %>%
-    filter(!is.na(pass_result))
-}})
-
-read_games <- memoise::memoise({function() {
-  file.path("data", "games.csv") %>% 
-    read_csv() %>%
-    janitor::clean_names()
-}})
-
-read_week1 <- memoise::memoise({function() {
-  file.path("data", "week1.csv") %>% 
-    vroom::vroom() %>%
-    janitor::clean_names()
-}})
-
+source("scripts/read_files.R")
+# remotes::install_github("dreamRs/prefixer") # to help with package namespacing
 
 .coerce_to_mat <- function(data) {
   res <- data %>%
-    select(x, y) %>%
+    dplyr::select(x, y) %>%
     as.matrix()
   rownames(res) <- data[["nfl_id"]]
   res
 }
 
+#' Compute min distances between players
+#' 
+#' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method
+#' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
+#' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
 .compute_min_distances <- function(data) {
   o <- data %>%
-    filter(side == "O") %>%
+    dplyr::filter(side == "O") %>%
     .coerce_to_mat()
   d <- data %>%
-    filter(side == "D") %>%
+    dplyr::filter(side == "D") %>%
     .coerce_to_mat()
   dists <- fields::rdist(o, d)
   rows <- rownames(o)
@@ -55,28 +32,28 @@ read_week1 <- memoise::memoise({function() {
   idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
   cols_min <- cols[idx_min]
   pairs <-
-    tibble(nfl_id_d = rows, nfl_id_o = cols_min) %>%
-    mutate(across(starts_with("nfl_id"), as.integer))
+    tibble::tibble(nfl_id_d = rows, nfl_id_o = cols_min) %>%
+    dplyr::mutate(dplyr::across(dplyr::starts_with("nfl_id"), as.integer))
   dists_tidy <-
     dists %>%
-    as_tibble(rownames = "nfl_id_d") %>%
-    pivot_longer(-c(nfl_id_d), names_to = "nfl_id_o", values_to = "dist") %>%
-    relocate(nfl_id_o, nfl_id_d) %>%
-    mutate(across(starts_with("nfl_id"), as.integer)) %>%
-    inner_join(data %>% select(nfl_id_o = nfl_id, x_o = x, y_o = y), by = "nfl_id_o") %>%
-    inner_join(data %>% select(nfl_id_d = nfl_id, x_d = x, y_d = y), by = "nfl_id_d")
+    tibble::as_tibble(rownames = "nfl_id_d") %>%
+    tidyr::pivot_longer(-c(nfl_id_d), names_to = "nfl_id_o", values_to = "dist") %>%
+    dplyr::relocate(nfl_id_o, nfl_id_d) %>%
+    dplyr::mutate(dplyr::across(dplyr::starts_with("nfl_id"), as.integer)) %>%
+    dplyr::inner_join(data %>% dplyr::select(nfl_id_o = nfl_id, x_o = x, y_o = y), by = "nfl_id_o") %>%
+    dplyr::inner_join(data %>% dplyr::select(nfl_id_d = nfl_id, x_d = x, y_d = y), by = "nfl_id_d")
   res <-
     dists_tidy %>%
-    inner_join(pairs, by = c("nfl_id_o", "nfl_id_d"))
+    dplyr::inner_join(pairs, by = c("nfl_id_o", "nfl_id_d"))
   res
 }
 
-#" @source https://stackoverflow.com/a/17313561/120898
+#' @source https://stackoverflow.com/a/17313561/120898
 pts <- function(x) {
   as.numeric(grid::convertUnit(grid::unit(x, "pt"), "mm"))
 }
 
-#" @source https://stackoverflow.com/questions/43627679/round-any-equivalent-for-dplyr/46489816#46489816
+#' @source https://stackoverflow.com/questions/43627679/round-any-equivalent-for-dplyr/46489816#46489816
 round_any <- function(x, accuracy, f = round) {
   f(x / accuracy) * accuracy
 }
@@ -92,7 +69,7 @@ animate_play <-
            nearest_defender = TRUE,
            yardmin = NULL,
            yardmax = NULL,
-           field_color = "#7fc47f",
+           field_color = "#b3e3d6",
            line_color = "black",
            sideline_color = "white",
            ...,
@@ -105,46 +82,74 @@ animate_play <-
            width = 600,
            fps = 10) {
     
-    meta <- tibble(game_id = game_id, play_id = play_id)
+    meta <- tibble::tibble(game_id = game_id, play_id = play_id)
     
     tracking <-
       tracking %>% 
-      left_join(positions %>% select(position, side), by = "position") %>%
-      inner_join(meta, by = c("game_id", "play_id"))
+      dplyr::left_join(positions %>% dplyr::select(position, side), by = "position") %>%
+      dplyr::inner_join(meta, by = c("game_id", "play_id"))
     
-    ball <- tracking %>% filter(display_name == "Football")
+    ball <- tracking %>% dplyr::filter(display_name == "Football")
     
     tracking <-
       tracking %>%
-      filter(display_name != "Football") %>%
-      inner_join(ball %>% select(game_id, play_id, frame_id, ball_x = x, ball_y = y))
+      dplyr::filter(display_name != "Football") %>%
+      dplyr::inner_join(ball %>% dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y))
     
-    play <- plays %>% inner_join(meta, by = c("game_id", "play_id"))
-    game <- games %>% inner_join(meta, by = "game_id")
+    play <- plays %>% dplyr::inner_join(meta, by = c("game_id", "play_id"))
+    game <- games %>% dplyr::inner_join(meta, by = "game_id")
     assertthat::assert_that(nrow(play) == 1L)
     
     if(nearest_defender) {
-      min_dists <-
+      events_end_route <-
+        c(
+          "pass_outcome_caught",
+          "pass_outcome_incomplete",
+          "qb_sack",
+          "pass_outcome_interception",
+          "pass_outcome_touchdown",
+          "qb_strip_sack",
+          "qb_spike"
+        )
+      
+      tracking_dists <-
         tracking %>%
-        filter(position != "QB") %>%
-        select(game_id, play_id, nfl_id, frame_id, side, x, y) %>%
-        nest(data = -c(frame_id)) %>%
-        mutate(data = map(data, .compute_min_distances)) %>%
-        unnest(data)
+        # head(300) %>% 
+        dplyr::group_by(game_id, play_id, nfl_id) %>%
+        dplyr::mutate(
+          group = dplyr::case_when(
+            frame_id == min(frame_id) ~ 1L,
+            dplyr::lag(event) %in% events_end_route ~ 1L,
+            TRUE ~ 0L
+          ),
+          group = cumsum(group)
+        ) %>%
+        dplyr::ungroup() %>%
+        dplyr::filter(group == 1L) %>%
+        dplyr::select(-group)
+      
+      min_dists <-
+        tracking_dists %>%
+        dplyr::filter(position != "QB") %>%
+        dplyr::select(game_id, play_id, nfl_id, frame_id, side, x, y) %>%
+        tidyr::nest(data = -c(frame_id)) %>%
+        dplyr::mutate(data = purrr::map(data, .compute_min_distances)) %>%
+        tidyr::unnest(data)
     }
     
     line_of_scrimmage <- play$absolute_yardline_number
     play_direction <- tracking$play_direction[[1]]
     first_down_line <- line_of_scrimmage + ifelse(play_direction == "left", -1, 1) * play$yards_to_go
     
-    ball <- tracking %>%
-      distinct(frame_id, x = ball_x, y = ball_y) %>%
-      mutate(nfl_id = NA_real_)
+    ball <-
+      tracking %>%
+      dplyr::distinct(frame_id, x = ball_x, y = ball_y) %>%
+      dplyr::mutate(nfl_id = NA_real_)
     
     if(is.null(yardmin) | is.null(yardmax)) {
       yardminmax <-
         tracking %>% 
-        summarize(across(x, list(min = min, max = max)))
+        dplyr::summarize(dplyr::across(x, list(min = min, max = max)))
       
       if(is.null(yardmin)) {
         yardmin <- yardminmax$x_min
@@ -161,9 +166,8 @@ animate_play <-
     away_team <- game$visitor_team_abbr
     
     colors <- read_colors()
-    colors
-    home_color <- colors %>% filter(team == home_team) %>% pull(color)
-    away_color <- colors %>% filter(team == away_team) %>% pull(color)
+    home_color <- colors %>% dplyr::filter(team == home_team) %>% dplyr::pull(color)
+    away_color <- colors %>% dplyr::filter(team == away_team) %>% dplyr::pull(color)
     if(play$possession_team == home_team) {
       offense_color <- home_color
       defense_color <- away_color
@@ -171,25 +175,33 @@ animate_play <-
       offense_color <- away_color
       defense_color <- home_color
     }
+    
     p <-
       tracking %>%
-      ggplot() +
-      gg_field(yardmin = yardmin, yardmax = yardmax, field_color = field_color, line_color = line_color, sideline_color = sideline_color, ...) +
-      aes(x = x, y = y, group = nfl_id) +
-      geom_segment(
-        data = tibble(),
-        inherit.aes = FALSE,
-        aes(x = line_of_scrimmage, y = 0, xend = line_of_scrimmage, yend = 0 + 160 / 3),
-        size = 2
+      ggplot2::ggplot() +
+      gg_field(
+        yardmin = yardmin,
+        yardmax = yardmax,
+        field_color = field_color,
+        line_color = line_color,
+        sideline_color = sideline_color # ,
+        # ...
       ) +
-      geom_segment(
-        data = tibble(),
+      ggplot2::aes(x = x, y = y, group = nfl_id) +
+      ggplot2::geom_segment(
+        data = tibble::tibble(),
         inherit.aes = FALSE,
-        aes(x = first_down_line, y = 0, xend = first_down_line, yend = 0 + 160 / 3),
+        ggplot2::aes(x = line_of_scrimmage, y = 0, xend = line_of_scrimmage, yend = 0 + 160 / 3),
+        size = 1.25
+      ) +
+      ggplot2::geom_segment(
+        data = tibble::tibble(),
+        inherit.aes = FALSE,
+        ggplot2::aes(x = first_down_line, y = 0, xend = first_down_line, yend = 0 + 160 / 3),
         color = "#ffff7f",
         size = 2
       ) +
-      geom_point(
+      ggplot2::geom_point(
         data = ball,
         inherit.aes = TRUE,
         size = 3,
@@ -202,33 +214,35 @@ animate_play <-
       #   color = "black",
       #   show.legend = FALSE
       # ) +
-      geom_text(
-        aes(label = "\u25A0", color = side, angle = o),
+      ggplot2::geom_text(
+        ggplot2::aes(label = "\u25A0", color = side, angle = o),
         # size = 8,
-        size = pts(24),
+        size = pts(32),
         show.legend = FALSE
       ) +
-      geom_text(
-        aes(label = "\u0332", color = side, angle = o),
+      ggplot2::geom_text(
+        # aes(label = "\u0332", color = side, angle = o),
+        ggplot2::aes(label = "\u2039", color = side, angle = o + 90),
         # size = 8,
-        size = pts(24),
-        # vjust = 0.4,
+        size = pts(32),
+        vjust = 0.3,
+        hjust = 2,
         show.legend = FALSE
       ) +
-      geom_text(
-        aes(label = jersey_number, angle = o),
+      ggplot2::geom_text(
+        ggplot2::aes(label = jersey_number, angle = o),
         color = "white",
         # size = 3,
-        size = pts(8),
+        size = pts(12),
         vjust = 1,
       ) +
-      # TODO: Use team colors.
-      scale_color_manual(values = c("O" = offense_color, "D" = defense_color)) +
-      theme(plot.caption = element_text(hjust = 0, size = 12)) +
-      labs(
-        caption = glue::glue("{game$visitor_team_abbr} @ {game$home_team_abbr}, Week {game$week} (game_id = {game$game_id})
-                             Q{play$quarter}: {str_wrap(paste0(play$play_description, ' ', '(play_id = ', play$play_id, '))'), 80)}
-                             EPA: {round(play$epa, 2)}"),
+      ggplot2::scale_color_manual(values = c("O" = offense_color, "D" = defense_color)) +
+      ggplot2::theme(plot.caption = ggplot2::element_text(hjust = 0, size = 12)) +
+      ggplot2::labs(
+        caption = glue::glue("{game$visitor_team_abbr} @ {game$home_team_abbr}, Week {game$week}
+                             Q{play$quarter}: {stringr::str_wrap(play$play_description, 100)}
+                             EPA: {round(play$epa, 2)}
+                             game_id = {game$game_id}, play_id = {play$play_id}"),
         x = NULL, y = NULL
       )
     p
@@ -236,15 +250,14 @@ animate_play <-
     if(nearest_defender) {
       p <-
         p +
-        geom_segment(
+        ggplot2::geom_segment(
           data = min_dists,
           inherit.aes = FALSE,
-          aes(x = x_o, y = y_o, xend = x_d, yend = y_d),
+          ggplot2::aes(x = x_o, y = y_o, xend = x_d, yend = y_d),
           color = "grey50"
         )
     }
     anim <- p + gganimate::transition_manual(frame_id)
-    browser()
     if(!save) {
       return(anim)
     }
