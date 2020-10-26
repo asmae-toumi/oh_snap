@@ -1,27 +1,19 @@
 
-
 library(tidyverse)
+source("scripts/read_files.R")
+source("scripts/animate_play.R")
 
-positions <- read_csv(here::here("data/positions.csv"))
-# tracking <- read_csv(here::here("data/highest_epa_example_data.csv"))
-# tracking <- read_csv(here::here("data/week1.csv")) %>% clean_names()
-n_week <- 6L
+positions <- read_positions()
+games <- read_games()
+plays <- read_plays()
+
+# n_week <- 6L
 tracking <- 
-  arrow::read_parquet(here::here("data/all_weeks.parquet")) %>% 
-  janitor::clean_names()  %>%
-  mutate(across(week, ~str_remove(.x, 'week') %>% as.integer())) %>% 
-  filter(week <= n_week) %>% 
+  # read_all_weeks() %>% 
+  # mutate(across(week, ~str_remove(.x, 'week') %>% as.integer())) %>% 
+  # filter(week <= n_week) %>% 
+  read_week1() %>% 
   left_join(positions %>% select(position, side))
-
-games <-
-  read_csv(here::here("data/games.csv")) %>%
-  janitor::clean_names() %>%
-  mutate(game_date = lubridate::mdy(game_date))
-
-plays <-
-  read_csv(here::here("data/plays.csv")) %>%
-  janitor::clean_names() %>%
-  filter(!is.na(pass_result))
 
 ball <- tracking %>% filter(display_name == "Football")
 
@@ -56,7 +48,6 @@ possession <-
 
 tracking <-
   tracking %>%
-  # head(1000) %>% 
   left_join(play_direction, by = c("game_id", "play_id")) %>%
   left_join(line_of_scrimmage, by = c("team", "game_id", "play_id")) %>%
   left_join(possession, by = c("game_id", "play_id")) %>% 
@@ -101,12 +92,16 @@ events_end_route <- c(
   # "penalty_accepted"
 )
 
+events_throw <- c(
+  "pass_forward",
+  "pass_shovel"
+)
+
 # Probably should make this a function to be used anywhere.
 compute_dist <- function(x1, y1, x2, y2) {
   sqrt((x1 - x2)^2 + (y1 - y2)^2)
 }
 
-# hashmark_constant <- (70 * 12 + 9) / 36
 x_max <- 120
 y_max <- 160 / 3
 # When `group = 0`, it's pre-snap.
@@ -132,7 +127,7 @@ tracking_cleaned <-
     across(c(x, ball_x), ~if_else(direction, .x - (!!x_max - los), .x - los)),
     across(c(y, ball_y), ~if_else(direction, !!y_max - .x, .x)),
     y_relative = y - ball_y,
-    dist = compute_dist(x, y, ball_x, ball_y),
+    # dist = compute_dist(x, y, ball_x, ball_y),
     # dist_relative = compute_dist(x, y_relative, ball_x, 0),
     # y_half = case_when(y <= y_max / 2 ~ "bottom", TRUE ~ "top"),
     # y_third = case_when(y <= !!hashmark_constant ~ "bottom", y > (!!y_max - !!hashmark_constant) ~ "top", TRUE ~ "mid")
@@ -140,20 +135,19 @@ tracking_cleaned <-
   ) %>% 
   select(-direction)
 tracking_cleaned
-# tracking %>% head(10)
+
 snap_frames_cleaned <- tracking_cleaned %>% filter(event == "ball_snap")
 snap_frames_cleaned
 
 receivers_at_snap <-
   snap_frames_cleaned %>%
-  # QBs get filtered out by `is.na(route)` anyways.
-  # filter(position != 'QB' & side == 'O') %>%
+  # QBs get filtered out by `is.na(route)` (and players who blocked).
   filter(side == 'O') %>%
+  filter(!is.na(route)) %>% 
   inner_join(plays, by = c("game_id", "play_id")) %>%
   group_by(game_id, play_id) %>%
   mutate(idx_y = row_number(y), n = n()) %>%
   ungroup() %>%
-  filter(!is.na(route)) %>% 
   group_by(game_id, play_id, y_side) %>% 
   mutate(idx_y_side = case_when(y_side == 'below' ~ row_number(idx_y), TRUE ~ row_number(-idx_y))) %>% 
   ungroup() %>% 
@@ -162,6 +156,7 @@ receivers_at_snap <-
     game_id,
     play_id,
     nfl_id,
+    event,
     display_name,
     position,
     x,
@@ -169,7 +164,6 @@ receivers_at_snap <-
     y_relative,
     ball_x,
     ball_y,
-    dist,
     y_side,
     idx_y_side,
     route,
@@ -177,9 +171,11 @@ receivers_at_snap <-
   )
 receivers_at_snap
 
-# Figure out where TEs usually line up so that we can filter out players in the backfield
+# Figure out where TEs usually line up so that we can filter out players in the backfield.
+# Seems like it's around ~3-5 yards from ball.
 # receivers_at_snap %>% filter(position == 'TE') %>% mutate(across(y_relative, ~cut(.x, breaks = seq.int(-8, 8)))) %>% count(y_relative)
 # receivers_at_snap <- receivers_at_snap %>% filter(abs(y_relative) > 3)
+
 route_combos <-
   receivers_at_snap %>%
   select(game_id, play_id, y_side, idx_y_side, route) %>% 
@@ -197,87 +193,249 @@ route_combos_n <-
   count(route_combo, n_route, sort = TRUE)
 route_combos_n
 
-# Only want the pairs.
+# Only want combos with 2 to 4 routes. 2 is a "well-defined" lower limit, but 4 is not.
+# There are actually some plays with 5 receivers on one side of the field at snap!
 route_combos_n_group <- 
   route_combos_n %>% 
   filter(n_route >= 2L, n_route <= 4L) %>% 
   mutate(rnk = row_number(desc(n)))
 route_combos_n_group
-route_combos_n_group %>% filter(route_combo == 'SLANT-OUT')
+route_combos_n_group
 
 # There are plays with 5 receivers on the same side of the field?!?
 route_combos_n %>% group_by(n_route) %>% summarize(across(n, sum)) %>% ungroup()
 route_combos_n %>% filter(n_route == 5L)
 
-n_sample <- 20L
-route_combos_n_group_sample <- route_combos_n_group %>% head(n_sample)
-route_combos_n_group_sample
+# # Take just a sample of the route combos.
+# n_sample <- 20L
+# route_combos_n_group_sample <- route_combos_n_group %>% head(n_sample)
+# route_combos_n_group_sample
 
-short_in_routes <- c('SLANT', 'IN')
-short_out_routes <- c('FLAT', 'OUT')
+# Create a data.frame with all possible pick play route combos.
+short_in_routes <- c("SLANT", "IN")
+short_out_routes <- c("FLAT", "OUT")
+all_routes <- c("HITCH", "OUT", "FLAT", "CROSS", "GO", "SLANT", "SCREEN", "CORNER", "IN", "ANGLE", "POST", "WHEEL")
+# `idx_y_out` marks the receiver doing the "out" part of the combo, which is typically the desired receiver.
 short_pick_route_combos <-
   list(
     crossing(
       route1 = short_in_routes,
       route2 = short_out_routes
-    ),
+    ) %>% 
+      mutate(idx_y_out = 2L, n_route = 2L),
     crossing(
-      route1 = short_in_routes,
+      route1 = all_routes,
       route2 = short_in_routes,
       route3 = short_out_routes
-    ),
+    ) %>% 
+      mutate(idx_y_out = 3L, n_route = 3L),
     crossing(
       route1 = short_in_routes,
       route2 = short_out_routes,
-      route3 = short_in_routes
-    )
+      route3 = all_routes
+    ) %>% 
+      mutate(idx_y_out = 2L, n_route = 3L),
+    crossing(
+      route1 = all_routes,
+      route2 = all_routes,
+      route3 = short_in_routes,
+      route4 = short_out_routes
+    ) %>% 
+      mutate(idx_y_out = 4L, n_route = 4L),
+    crossing(
+      route1 = all_routes,
+      route2 = short_in_routes,
+      route3 = short_out_routes,
+      route4 = all_routes
+    ) %>% 
+      mutate(idx_y_out = 3L, n_route = 4L),
+    crossing(
+      route1 = short_in_routes,
+      route2 = short_out_routes,
+      route3 = all_routes,
+      route4 = all_routes
+    ) %>% 
+      mutate(idx_y_out = 2L, n_route = 4L)
   ) %>% 
   reduce(bind_rows) %>% 
-  unite('route_combo', matches('route'), sep = '-') %>% 
+  unite('route_combo', matches('^route'), sep = '-') %>% 
   mutate(
     across(route_combo, ~str_replace_all(.x, c('-NA' = '', '^NA' = '')))
   )
 short_pick_route_combos
 
-route_combos_n_group %>% 
-  inner_join(short_pick_route_combos)
+# Check to see which of the pre-defined combos are actually observed in the data.
+route_combos_w_short_picks <-
+  route_combos_n_group %>% 
+  left_join(short_pick_route_combos) %>% 
+  mutate(
+    is_short_pick_combo = dplyr::if_else(!is.na(idx_y_out), TRUE, FALSE)
+  )
+route_combos_w_short_picks
 
+# Summarize pick route combos vs. other route combos.
+route_combos_w_short_picks %>% 
+  group_by(is_short_pick_combo, n_route) %>% 
+  summarize(across(n, sum)) %>% 
+  ungroup() %>% 
+  mutate(frac = n / sum(n))
+
+# Add route combo counts back to just "raw" route combo data.
 route_combos_group <- 
   route_combos %>% 
-  # filter(route_combo == 'HITCH-HITCH') %>% # debugging
-  # only look at the top `n_sample` pairs (by descending count)
-  inner_join(route_combos_n_group_sample) %>% 
-  mutate(across(route_combo, ~fct_reorder(.x, desc(n)))) %>% 
-  select(-n)
+  # # Only look at the top `n_sample` pairs (by descending count).
+  # inner_join(route_combos_n_group_sample) %>% 
+  # # Factor to make `facet_wrap()` in order.
+  # mutate(across(route_combo, ~fct_reorder(.x, desc(n)))) %>% 
+  # select(-n)
+  inner_join(route_combos_n_group)
 route_combos_group
 
-# rejoin back to identify which players were involved in each pair
+# Rejoin back to identify which players were involved in each pair.
 receivers_at_snap_group <-
-  # data including `x`, `y` and `nfl_id`.
+  # Data including `x`, `y` and `nfl_id`.
   receivers_at_snap %>% 
-  # join data including `game_id`, `play_id`, and `y_side` for each pair
+  # Join data including `game_id`, `play_id`, and `y_side` for each pair.
   inner_join(route_combos_group)
 receivers_at_snap_group
 
-# # TODO: Make a function to identify "close" receivers at the ball snap.
-# identify_close_receivers <- function(data) {
-#   data <-
-#     tibble::tribble(
-#        ~nfl_id,  ~display_name, ~position,                 ~x,               ~y,            ~dist,  ~route, ~idx_y_side,
-#       2495454L,  "Julio Jones",      "WR", -0.579999999999998, 9.19333333333334, 17.3351261893301, "HITCH",          1L,
-#       2533040L, "Mohamed Sanu",      "WR",                  0, 17.1733333333333, 9.33407735129723, "HITCH",          2L
-#       )
-#   data <-
-#     
-# }
-# 
-# receivers_at_snap_group %>% 
-#   filter(n_route == 3L) %>% 
-#   select(game_id, play_id, y_side, route_combo, nfl_id, display_name, position, x, y, dist, route, idx_y_side) %>% 
-#   nest(data = c(nfl_id, display_name, position, x, y, dist, route, idx_y_side)) %>% 
-#   mutate(data = map(data, identify_close_receivers)) %>% 
-#   unnest(data
+# Get snap frames and throw frames, including players on both sides of the ball.
+throw_framed_cleaned <- 
+  tracking_cleaned %>% 
+  filter(event %in% events_throw) %>% 
+  # Re-define `event` to make it so that there is only one label, instead of the multiple labels defined by `events_throw`.
+  # This makes `pivot_wider()` nicer later.
+  mutate(event = "pass_throw")
 
+# Going to be looking at the nearest defender at the time of snap vs. time of throw.
+frames_group <-
+  bind_rows(
+    snap_frames_cleaned,
+    throw_framed_cleaned
+  ) %>% 
+  # Filter down to just the plays were care about.
+  # Don't want `frame_id` here.
+  semi_join(
+    route_combos_group %>% select(game_id, play_id),
+    by = c("game_id", "play_id")
+  )
+frames_group
+
+min_dists <-
+  frames_group %>% 
+  dplyr::filter(position != "QB") %>%
+  dplyr::select(game_id, play_id, frame_id, event, nfl_id, side, x, y) %>%
+  tidyr::nest(data = c(nfl_id, side, x, y)) %>%
+  dplyr::mutate(data = purrr::map(data, compute_min_distances)) %>%
+  tidyr::unnest(data)
+min_dists
+
+# Add `nfl_id*`s back.
+# Add player names (`display_name*`) only for data checking. They're not actually necessary.
+min_dists_w_players <-
+  min_dists %>%
+  inner_join(
+    receivers_at_snap_group %>% 
+      select(
+        game_id,
+        play_id,
+        # frame_id,
+        nfl_id_o = nfl_id,
+        display_name_o = display_name,
+        y_side,
+        idx_y_side,
+        route,
+        route_combo,
+        n_route # ,
+        # rnk
+      ),
+    by = c("game_id", "play_id", "nfl_id_o")
+  ) %>% 
+  inner_join(
+    snap_frames_cleaned %>% 
+      filter(side == "D") %>% 
+      select(game_id, play_id, nfl_id_d = nfl_id, display_name_d = display_name),
+    by = c("game_id", "play_id", "nfl_id_d")
+  ) %>% 
+  arrange(game_id, play_id, y_side, idx_y_side, frame_id)
+min_dists_w_players
+min_dists_w_players %>% filter(!is.na(idx_y_out))
+
+min_dists_def_tally <-
+  min_dists_w_players %>%
+  select(
+    game_id,
+    play_id,
+    y_side,
+    idx_y_side,
+    route,
+    route_combo,
+    n_route,
+    # rnk,
+    event,
+    nfl_id_o,
+    nfl_id_d
+  ) %>%
+  # count(game_id, play_id, y_side, event, nfl_id_d, sort = TRUE)
+  pivot_wider(
+    names_from = c(event),
+    values_from = c(nfl_id_d),
+    names_prefix = "nfl_id_d_"
+  ) %>%
+  mutate(same_defender = dplyr::if_else(nfl_id_d_ball_snap == nfl_id_d_pass_throw, TRUE, FALSE))
+min_dists_def_tally
+
+min_dists_def_tally_n <-
+  min_dists_def_tally %>% 
+  # Add `idx_y_out` column. It will only be non-NA for `route_combo`s that count as pick combos.
+  left_join(
+    short_pick_route_combos,
+    by = c("route_combo", "n_route")
+  ) %>% 
+  mutate(
+    is_short_pick_route_combo = dplyr::if_else(!is.na(idx_y_out), TRUE, FALSE),
+    is_out_rec = dplyr::if_else(idx_y_out == idx_y_side, TRUE, FALSE)
+  ) %>% 
+  # group_by(game_id, play_id, route, route_combo, n_route, is_short_pick_route_combo, is_out_rec) %>% 
+  group_by(n_route, is_short_pick_route_combo, is_out_rec) %>% 
+  summarize(n = n(), across(same_defender, sum)) %>% 
+  ungroup() %>% 
+  mutate(frac = same_defender / n)
+min_dists_def_tally_n
+min_dists_def_tally_n %>% filter(!is.na(is_out_rec))
+
+min_dists_def_tally_n %>% 
+  count(route_combo, n_route, is_short_pick_route_combo, same_defender) %>% 
+  group_by(route_combo, n_route, is_short_pick_route_combo) %>% 
+  mutate(
+    total = n(),
+    frac = n / total
+  ) %>% 
+  ungroup()
+min_dists_def_tally_n
+
+min_dists_def_tally_n %>% 
+  filter(same_defender == 0L) %>% 
+  arrange(desc(frac))
+
+min_dists_def_tally %>% 
+  filter(nfl_id_d_ball_snap == nfl_id_d_pass_throw)
+
+# frames_group <-
+#   list(
+#     receivers_at_snap_group,
+#     snap_frames_cleaned %>% 
+#       filter(side == "D") %>% 
+#       inner_join(
+#         route_combos_group %>% select(game_id, play_id),
+#         by = c("game_id", "play_id")
+#       ) %>% 
+#       select(any_of(names(receivers_at_snap_group))),
+#     
+#   )
+# frames_group
+
+# Count how frequent these actions are.
 n_game <-
   games %>% 
   filter(week <= !!n_week) %>% 
@@ -289,6 +447,7 @@ route_combos_n_group %>%
   mutate(pct = 100 * n / !!n_game) %>% 
   head(n_sample)
 
+# Prep to make some plots.
 tracking_cleaned_group <-
   tracking_cleaned %>%
   inner_join(
@@ -309,6 +468,7 @@ tracking_cleaned_group <-
   )
 tracking_cleaned_group
 
+
 tracking_cleaned_group_agg <-
   tracking_cleaned_group %>% 
   # Only first 5 seconds.
@@ -318,6 +478,7 @@ tracking_cleaned_group_agg <-
   ungroup()
 tracking_cleaned_group_agg
 
+# Plot average of each route combo
 tracking_cleaned_pair_agg %>% 
   mutate(
     grp = sprintf('%s-%s-%s', route_combo, route, idx_y_side)
@@ -329,11 +490,11 @@ tracking_cleaned_pair_agg %>%
   guides(color = FALSE) +
   facet_wrap(~route_combo)
 
+# Plot all routes in each route combo
 tracking_cleaned_pair %>% 
   mutate(
     grp = sprintf('%s-%s-%s-%s-%s', game_id, play_id, route_combo, route, idx_y_side)
   ) %>% 
-  # filter(route == 'GO') %>% 
   ggplot() +
   aes(x = x, y = y, group = grp, color = route) +
   geom_path() +

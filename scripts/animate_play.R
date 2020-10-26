@@ -18,10 +18,12 @@ source("scripts/read_files.R")
 #' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
 compute_min_distances <- function(data) {
-  o <- data %>%
+  o <-
+    data %>%
     dplyr::filter(side == "O") %>%
     .coerce_to_mat()
-  d <- data %>%
+  d <-
+    data %>%
     dplyr::filter(side == "D") %>%
     .coerce_to_mat()
   dists <- fields::rdist(o, d)
@@ -32,13 +34,12 @@ compute_min_distances <- function(data) {
   idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
   cols_min <- cols[idx_min]
   pairs <-
-    tibble::tibble(nfl_id_d = rows, nfl_id_o = cols_min) %>%
+    tibble::tibble(nfl_id_o = rows, nfl_id_d = cols_min) %>%
     dplyr::mutate(dplyr::across(dplyr::starts_with("nfl_id"), as.integer))
   dists_tidy <-
     dists %>%
-    tibble::as_tibble(rownames = "nfl_id_d") %>%
-    tidyr::pivot_longer(-c(nfl_id_d), names_to = "nfl_id_o", values_to = "dist") %>%
-    dplyr::relocate(nfl_id_o, nfl_id_d) %>%
+    tibble::as_tibble(rownames = "nfl_id_o") %>%
+    tidyr::pivot_longer(-c(nfl_id_o), names_to = "nfl_id_d", values_to = "dist") %>%
     dplyr::mutate(dplyr::across(dplyr::starts_with("nfl_id"), as.integer)) %>%
     dplyr::inner_join(data %>% dplyr::select(nfl_id_o = nfl_id, x_o = x, y_o = y), by = "nfl_id_o") %>%
     dplyr::inner_join(data %>% dplyr::select(nfl_id_d = nfl_id, x_d = x, y_d = y), by = "nfl_id_d")
