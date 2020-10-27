@@ -67,6 +67,7 @@ animate_play <-
            positions = read_positions(),
            plays = read_plays(),
            games = read_games(),
+           team_colors = FALSE,
            nearest_defender = TRUE,
            yardmin = NULL,
            yardmax = NULL,
@@ -90,16 +91,25 @@ animate_play <-
       dplyr::left_join(positions %>% dplyr::select(position, side), by = "position") %>%
       dplyr::inner_join(meta, by = c("game_id", "play_id"))
     
+    if(nrow(tracking) == 0L) {
+      stop(sprintf("Could not identify tracking data for `game_id = %s`, `play_id = %s`", game_id, play_id), call. = FALSE)
+    }
+    
     ball <- tracking %>% dplyr::filter(display_name == "Football")
     
     tracking <-
       tracking %>%
       dplyr::filter(display_name != "Football") %>%
-      dplyr::inner_join(ball %>% dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y))
+      dplyr::inner_join(
+        ball %>% 
+          dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y), 
+        by = c("frame_id", "game_id", "play_id")
+      )
     
     play <- plays %>% dplyr::inner_join(meta, by = c("game_id", "play_id"))
-    game <- games %>% dplyr::inner_join(meta, by = "game_id")
     assertthat::assert_that(nrow(play) == 1L)
+    game <- games %>% dplyr::inner_join(meta, by = "game_id")
+    assertthat::assert_that(nrow(game) == 1L)
     
     if(nearest_defender) {
       events_end_route <-
@@ -115,8 +125,7 @@ animate_play <-
       
       tracking_dists <-
         tracking %>%
-        # head(300) %>% 
-        dplyr::group_by(game_id, play_id, nfl_id) %>%
+        dplyr::group_by(nfl_id) %>%
         dplyr::mutate(
           group = dplyr::case_when(
             frame_id == min(frame_id) ~ 1L,
@@ -132,7 +141,7 @@ animate_play <-
       min_dists <-
         tracking_dists %>%
         dplyr::filter(position != "QB") %>%
-        dplyr::select(game_id, play_id, nfl_id, frame_id, side, x, y) %>%
+        dplyr::select(frame_id, nfl_id, side, x, y) %>%
         tidyr::nest(data = -c(frame_id)) %>%
         dplyr::mutate(data = purrr::map(data, compute_min_distances)) %>%
         tidyr::unnest(data)
@@ -166,17 +175,23 @@ animate_play <-
     home_team <- game$home_team_abbr
     away_team <- game$visitor_team_abbr
     
-    colors <- read_colors()
-    home_color <- colors %>% dplyr::filter(team == home_team) %>% dplyr::pull(color)
-    away_color <- colors %>% dplyr::filter(team == away_team) %>% dplyr::pull(color)
-    if(play$possession_team == home_team) {
-      offense_color <- home_color
-      defense_color <- away_color
+    if(team_colors) {
+      colors <- read_colors()
+      home_color <- colors %>% dplyr::filter(team == home_team) %>% dplyr::pull(color)
+      away_color <- colors %>% dplyr::filter(team == away_team) %>% dplyr::pull(color)
+      if(play$possession_team == home_team) {
+        offense_color <- home_color
+        defense_color <- away_color
+      } else {
+        offense_color <- away_color
+        defense_color <- home_color
+      }
     } else {
-      offense_color <- away_color
-      defense_color <- home_color
+      offense_color <- "red"
+      defense_color <- "blue"
     }
     
+    max_y <- 160 / 3
     p <-
       tracking %>%
       ggplot2::ggplot() +
@@ -192,13 +207,13 @@ animate_play <-
       ggplot2::geom_segment(
         data = tibble::tibble(),
         inherit.aes = FALSE,
-        ggplot2::aes(x = line_of_scrimmage, y = 0, xend = line_of_scrimmage, yend = 0 + 160 / 3),
+        ggplot2::aes(x = line_of_scrimmage, y = 0, xend = line_of_scrimmage, yend = !!max_y),
         size = 1.25
       ) +
       ggplot2::geom_segment(
         data = tibble::tibble(),
         inherit.aes = FALSE,
-        ggplot2::aes(x = first_down_line, y = 0, xend = first_down_line, yend = 0 + 160 / 3),
+        ggplot2::aes(x = first_down_line, y = 0, xend = first_down_line, yend = !!max_y),
         color = "#ffff7f",
         size = 2
       ) +
@@ -208,13 +223,6 @@ animate_play <-
         size = 3,
         color = "brown"
       ) +
-      # geom_point(
-      #   aes(fill = side),
-      #   size = 6,
-      #   shape = 21,
-      #   color = "black",
-      #   show.legend = FALSE
-      # ) +
       ggplot2::geom_text(
         ggplot2::aes(label = "\u25A0", color = side, angle = o),
         # size = 8,
@@ -222,7 +230,6 @@ animate_play <-
         show.legend = FALSE
       ) +
       ggplot2::geom_text(
-        # aes(label = "\u0332", color = side, angle = o),
         ggplot2::aes(label = "\u2039", color = side, angle = o + 90),
         # size = 8,
         size = pts(32),
@@ -240,7 +247,7 @@ animate_play <-
       ggplot2::scale_color_manual(values = c("O" = offense_color, "D" = defense_color)) +
       ggplot2::theme(plot.caption = ggplot2::element_text(hjust = 0, size = 12)) +
       ggplot2::labs(
-        caption = glue::glue("{game$visitor_team_abbr} @ {game$home_team_abbr}, Week {game$week}
+        caption = glue::glue("{away_team} @ {home_team}, Week {game$week}
                              Q{play$quarter}: {stringr::str_wrap(play$play_description, 100)}
                              EPA: {round(play$epa, 2)}
                              game_id = {game$game_id}, play_id = {play$play_id}"),
@@ -280,4 +287,3 @@ animate_play <-
       end_pause = end_pause * fps
     )
   }
-

@@ -11,10 +11,18 @@ read_positions <- memoise::memoise({function() {
 }})
 
 read_plays <- memoise::memoise({function() {
-  file.path("data", "plays.csv") %>% 
+  plays <-
+    file.path("data", "plays.csv") %>% 
     readr::read_csv() %>%
-    janitor::clean_names() %>%
-    dplyr::filter(!is.na(pass_result))
+    janitor::clean_names()
+  target <-
+    file.path("data", "targetedReciever.csv") %>% 
+    readr::read_csv() %>% 
+    janitor::clean_names()
+  res <-
+    plays %>% 
+    inner_join(target)
+  res
 }})
 
 read_games <- memoise::memoise({function() {
