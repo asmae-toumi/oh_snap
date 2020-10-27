@@ -1,62 +1,213 @@
 
-
 library(tidyverse)
 source("scripts/gg_field.R")
 source("scripts/read_files.R")
 
-# Create a data.frame with all possible pick play route combos.
-generate_short_pick_route_combos <- memoise::memoise({function() {
-  short_in_routes <- c("SLANT", "IN")
-  short_out_routes <- c("FLAT", "OUT")
-  all_routes <- c("HITCH", "OUT", "FLAT", "CROSS", "GO", "SLANT", "SCREEN", "CORNER", "IN", "ANGLE", "POST", "WHEEL")
-  # `idx_y_out` marks the receiver doing the "out" part of the combo, which is typically the desired receiver.
-  short_pick_route_combos <-
-    list(
-      crossing(
-        route1 = short_in_routes,
-        route2 = short_out_routes
-      ) %>% 
-        mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 2L),
-      crossing(
-        route1 = all_routes,
-        route2 = short_in_routes,
-        route3 = short_out_routes
-      ) %>% 
-        mutate(idx_y_in = 2L, idx_y_out = 3L, n_route = 3L),
-      crossing(
-        route1 = short_in_routes,
-        route2 = short_out_routes,
-        route3 = all_routes
-      ) %>% 
-        mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 3L),
-      crossing(
-        route1 = all_routes,
-        route2 = all_routes,
-        route3 = short_in_routes,
-        route4 = short_out_routes
-      ) %>% 
-        mutate(idx_y_in = 3L, idx_y_out = 4L, n_route = 4L),
-      crossing(
-        route1 = all_routes,
-        route2 = short_in_routes,
-        route3 = short_out_routes,
-        route4 = all_routes
-      ) %>% 
-        mutate(idx_y_in = 2L, idx_y_out = 3L, n_route = 4L),
-      crossing(
-        route1 = short_in_routes,
-        route2 = short_out_routes,
-        route3 = all_routes,
-        route4 = all_routes
-      ) %>% 
-        mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 4L)
-    ) %>% 
-    reduce(bind_rows) %>% 
-    unite('route_combo', matches('^route'), sep = '-') %>% 
+# # Used this to determine `cutoff` for `x_side`
+# snap_frames_cleaned %>% 
+#   filter(position == "RB") %>% 
+#   inner_join(plays) %>% 
+#   mutate(x_relative = x - ball_x) %>% 
+#   ggplot() +
+#   aes(x = x_relative) +
+#   geom_histogram(binwidth = 1) +
+#   facet_grid(offense_formation~play_direction)
+add_x_side_col <- function(data, cutoff = 2.5) {
+  data %>% 
     mutate(
-      across(route_combo, ~str_replace_all(.x, c('-NA' = '', '^NA' = '')))
+      # x_side = 
+      #   case_when(
+      #     play_direction == "left" & (x + !!cutoff) > ball_x ~ "backfield", 
+      #     play_direction == "right" & (x + !!cutoff) < ball_x ~ "backfield", 
+      #     TRUE ~ NA_character_
+      #   )
+      x_side = 
+        case_when(
+          (x + !!cutoff) < ball_x ~ "backfield",
+          TRUE ~ "los"
+        )
     )
-}})
+}
+
+# # Used this to determine `cutoff` for `y_side`
+# snap_frames_cleaned %>% 
+#   filter(position == "TE") %>% 
+#   inner_join(plays) %>% 
+#   mutate(
+#     y_relative = y - ball_y,
+#     across(y_relative, ~cut(.x, breaks = seq(-8, 8, by = 0.5)))
+#   ) %>% 
+#   ggplot() +
+#   aes(x = y_relative) +
+#   geom_bar() +
+#   facet_grid(offense_formation~.)
+add_y_side_col <- function(data, cutoff = 3.5) {
+  data %>% 
+    mutate(
+      y_side = 
+        case_when(
+          play_direction == "left" & (y + !!cutoff) < ball_y ~ "left", 
+          play_direction == "left" & (y - !!cutoff) >= ball_y ~ "right", 
+          play_direction == "left" ~ "mid",
+          play_direction == "right" & (y + !!cutoff) <= ball_y ~ "right", 
+          play_direction == "right" & (y - !!cutoff) >= ball_y ~ "left", 
+          play_direction == "right" ~ "mid",
+          TRUE ~ NA_character_
+        )
+    )
+}
+
+add_side_cols <- function(data, cutoff_x = 2.5, cutoff_y = 3.5) {
+  data %>% 
+    add_x_side_col(cutoff = cutoff_x) %>% 
+    add_y_side_col(cutoff = cutoff_y)
+}
+
+add_idx_y_col <- function(data) {
+  data %>% 
+    filter(side == "O" & !is.na(route) & y_side != "mid" & x_side != "backfield") %>%
+    group_by(game_id, play_id, frame_id, y_side) %>% 
+    mutate(
+      idx_y =
+        case_when(
+          y_side == "left" ~ row_number(y), 
+          y_side == "right" ~ row_number(-y), 
+          TRUE ~ NA_integer_
+        )
+    ) %>% 
+    ungroup()
+}
+
+
+identify_intersection_xy <- function(data) {
+  nfl_ids <- data %>% distinct(nfl_id) %>% pull(nfl_id)
+  if(length(nfl_ids) <= 1L) {
+    return(tibble())
+  }
+
+  data_trans <-
+    data %>% 
+    nest(data = -c(nfl_id)) %>% 
+    mutate(line = map(data, ~select(.x, x, y) %>% as.matrix() %>% sf::st_linestring())) %>% 
+    select(nfl_id, line)
+  res <-
+    crossing(
+      nfl_id = nfl_ids,
+      nfl_id_intersect = nfl_ids
+    ) %>% 
+    filter(nfl_id != nfl_id_intersect) %>% 
+    inner_join(data_trans, by = "nfl_id") %>% 
+    inner_join(data_trans %>% rename_all(~sprintf("%s_intersect", .x)), by = "nfl_id_intersect") %>% 
+    mutate(
+      intersection = map2(line, line_intersect, ~sf::st_intersection(..1, ..2) %>% as.numeric()),
+      has_intersection = map_lgl(intersection, ~length(.x) > 0L)
+    ) %>% 
+    filter(has_intersection)
+  
+  if(nrow(res) == 0L) {
+    return(tibble())
+  }
+  
+  res %>% 
+    mutate(
+      x_intersect = map_dbl(intersection, ~.x[[1]]),
+      y_intersect = map_dbl(intersection, ~.x[[2]])
+    ) %>% 
+    select(nfl_id, nfl_id_intersect, x_intersect, y_intersect)
+}
+
+identify_intersection <- function(data) {
+  nfl_ids <- data %>% distinct(nfl_id) %>% pull(nfl_id)
+  if(length(nfl_ids) <= 1L) {
+    return(tibble())
+  }
+  
+  data_trans <-
+    data %>% 
+    nest(data = -c(nfl_id)) %>% 
+    mutate(line = map(data, ~select(.x, x, y) %>% as.matrix() %>% sf::st_linestring())) %>% 
+    select(nfl_id, line)
+  # browser()
+  # line1 <- data_trans %>% slice(1) %>% pull(line) %>% pluck(1)
+  # line2 <- data_trans %>% slice(2) %>% pull(line) %>% pluck(1)
+  # sf::st_intersects(line1, line2) %>% as.integer()
+  res <-
+    crossing(
+      nfl_id = nfl_ids,
+      nfl_id_intersect = nfl_ids
+    ) %>% 
+    filter(nfl_id != nfl_id_intersect) %>% 
+    inner_join(data_trans, by = "nfl_id") %>% 
+    inner_join(data_trans %>% rename_all(~sprintf("%s_intersect", .x)), by = "nfl_id_intersect") %>% 
+    mutate(
+      intersection = map2_int(line, line_intersect, ~sf::st_intersects(..1, ..2) %>% as.integer()),
+      has_intersection = map_lgl(intersection, ~.x > 0L)
+    ) %>% 
+    filter(has_intersection)
+  
+  if(nrow(res) == 0L) {
+    return(tibble())
+  }
+  
+  res %>% 
+    select(nfl_id, nfl_id_intersect)
+}
+
+
+# # Create a data.frame with all possible pick play route combos.
+# # TODO: Eliminate this since it's a pretty fragile way to identify pick routes.
+# generate_short_pick_route_combos <- memoise::memoise({function() {
+#   short_in_routes <- c("SLANT", "IN")
+#   short_out_routes <- c("FLAT", "OUT")
+#   all_routes <- c("HITCH", "OUT", "FLAT", "CROSS", "GO", "SLANT", "SCREEN", "CORNER", "IN", "ANGLE", "POST", "WHEEL")
+#   # `idx_y_out` marks the receiver doing the "out" part of the combo, which is typically the desired receiver.
+#     list(
+#       crossing(
+#         route1 = short_in_routes,
+#         route2 = short_out_routes
+#       ) %>% 
+#         mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 2L),
+#       crossing(
+#         route1 = all_routes,
+#         route2 = short_in_routes,
+#         route3 = short_out_routes
+#       ) %>% 
+#         mutate(idx_y_in = 2L, idx_y_out = 3L, n_route = 3L),
+#       crossing(
+#         route1 = short_in_routes,
+#         route2 = short_out_routes,
+#         route3 = all_routes
+#       ) %>% 
+#         mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 3L),
+#       crossing(
+#         route1 = all_routes,
+#         route2 = all_routes,
+#         route3 = short_in_routes,
+#         route4 = short_out_routes
+#       ) %>% 
+#         mutate(idx_y_in = 3L, idx_y_out = 4L, n_route = 4L),
+#       crossing(
+#         route1 = all_routes,
+#         route2 = short_in_routes,
+#         route3 = short_out_routes,
+#         route4 = all_routes
+#       ) %>% 
+#         mutate(idx_y_in = 2L, idx_y_out = 3L, n_route = 4L),
+#       crossing(
+#         route1 = short_in_routes,
+#         route2 = short_out_routes,
+#         route3 = all_routes,
+#         route4 = all_routes
+#       ) %>% 
+#         mutate(idx_y_in = 1L, idx_y_out = 2L, n_route = 4L)
+#     ) %>% 
+#     reduce(bind_rows) %>% 
+#     unite('route_combo', matches('^route'), sep = '-') %>% 
+#     mutate(
+#       across(route_combo, ~str_replace_all(.x, c('-NA' = '', '^NA' = '')))
+#     )
+# }})
+
 
 plot_pick_route_play <-
   function(game_id = 2018090600,
@@ -86,7 +237,11 @@ plot_pick_route_play <-
     
     tracking <-
       tracking %>% 
-      dplyr::left_join(positions %>% dplyr::select(position, side), by = "position") %>%
+      dplyr::left_join(
+        positions %>% 
+          dplyr::select(position, position_category = category, side), 
+        by = "position"
+      ) %>%
       dplyr::inner_join(meta, by = c("game_id", "play_id"))
     
     if(nrow(tracking) == 0L) {
@@ -105,9 +260,15 @@ plot_pick_route_play <-
     
     play <- plays %>% dplyr::inner_join(meta, by = c("game_id", "play_id"))
     assertthat::assert_that(nrow(play) == 1L)
+    
     game <- games %>% dplyr::inner_join(meta, by = "game_id")
     assertthat::assert_that(nrow(game) == 1L)
-    target <- tracking %>% filter(nfl_id == play$target_nfl_id) %>% distinct(display_name, jersey_number)
+    
+    target_id <- play$target_nfl_id
+    target <- 
+      tracking %>% 
+      filter(nfl_id == !!target_id) %>% 
+      distinct(display_name, jersey_number)
     assertthat::assert_that(nrow(target) == 1L)
     
     events_throw <- c(
@@ -115,109 +276,90 @@ plot_pick_route_play <-
       "pass_shovel"
     )
     
-    frames_snap <- tracking %>% dplyr::filter(event == "ball_snap")
-    frames_throw <- tracking %>% dplyr::filter(event %in% events_throw) %>% dplyr::mutate(event = "pass_throw")
-    frames <- dplyr::bind_rows(frames_snap, frames_throw)
+    snap_frames <- tracking %>% dplyr::filter(event == "ball_snap")
+    
+    throw_frames <- 
+      tracking %>% 
+      dplyr::filter(event %in% events_throw) %>% 
+      dplyr::mutate(event = "pass_throw")
+    
+    frames <- dplyr::bind_rows(snap_frames, throw_frames)
+    
     min_dists <-
       frames %>%
       dplyr::filter(position != "QB") %>%
-      dplyr::select(nfl_id, event, side, x, y) %>%
-      tidyr::nest(data = -c(event)) %>%
+      dplyr::filter(position_category != "DL") %>% 
+      dplyr::select(game_id, play_id, event, nfl_id, side, x, y) %>%
+      tidyr::nest(data = -c(game_id, play_id, event)) %>%
       dplyr::mutate(data = purrr::map(data, compute_min_distances)) %>%
       tidyr::unnest(data)
     
     min_dists_wide <-
       min_dists %>% 
-      select(event, nfl_id_o, nfl_id_d) %>% 
+      select(game_id, play_id, event, nfl_id_o, nfl_id_d) %>% 
       pivot_wider(names_from = event, values_from = nfl_id_d, names_prefix = "nfl_id_d_") %>% 
       dplyr::mutate(is_same_defender = dplyr::if_else(nfl_id_d_ball_snap == nfl_id_d_pass_throw, TRUE, FALSE))
     min_dists_wide
     
-    play_direction <- tracking$play_direction[[1]]
     pick_route_candidates <-
-      frames_snap %>% 
-      filter(side == "O" & !is.na(route)) %>% 
-      mutate(
-        y_relative = y - ball_y,
-        y_side = 
-          case_when(
-            !!play_direction == "left" & y < ball_y ~ "left", 
-            !!play_direction == "left" & y >= ball_y ~ "right", 
-            !!play_direction == "right" & y <= ball_y ~ "right", 
-            !!play_direction == "right" & y >= ball_y ~ "left", 
-            TRUE ~ NA_character_
-          )
-      ) %>% 
-      mutate(idx_y = row_number(y)) %>%
-      ungroup() %>%
-      group_by(y_side) %>% 
-      mutate(idx_y = case_when(y_side == "left" ~ row_number(idx_y), TRUE ~ row_number(-idx_y))) %>% 
-      ungroup() %>% 
-      select(nfl_id, y_relative, y_side, idx_y, route)
+      snap_frames %>% 
+      add_side_cols() %>% 
+      add_idx_y_col() %>% 
+      select(game_id, play_id, nfl_id, y_side, idx_y, route)
     
     route_combos <-
       pick_route_candidates %>%
-      select(y_side, idx_y, route) %>% 
+      select(game_id, play_id, y_side, idx_y, route) %>% 
       pivot_wider(names_from = idx_y, values_from = route, names_prefix = "rec") %>% 
       unite("route_combo", matches("rec"), sep = "-") %>% 
+      # TODO: Fix this. Doesn't seem to capture all cases.
       mutate(
         across(route_combo, ~str_replace_all(.x, c("-NA" = "", "^NA" = ""))),
         n_route = route_combo %>% str_count("-") + 1L
       )
-    route_combos
-    short_pick_route_combos <- generate_short_pick_route_combos()
-    pick_route_combos <- route_combos %>% left_join(short_pick_route_combos, by = c("route_combo", "n_route"))
 
-    generate_pick_route_caption <- function(route_combo, y_side, idx_y_out) {
-      suffix <- ifelse(is.na(idx_y_out), "not ", "")
-      sprintf("%s on QB's %s is %sa pick combo.", route_combo, y_side, suffix)
-    }
-    
-    pick_route_combos_caption <-
-      pick_route_combos %>% 
-      # mutate(lab = pmap(list(route_combo, y_side, n_route), generate_pick_route_caption)) %>% 
-      mutate(lab =  generate_pick_route_caption(route_combo, y_side, idx_y_out)) %>% 
-      pull(lab) %>% 
-      paste(collapse = " ", sep = "")
-    pick_route_combos_caption
-    
-    generate_pick_route_caption <- function(route_combo, y_side, idx_y_out) {
-      suffix <- ifelse(is.na(idx_y_out), "NOT ", "")
-      sprintf("%s on QB's %s is %sa pick combo.", route_combo, y_side, suffix)
-    }
-    
     defenders <-
       min_dists_wide %>%
-      inner_join(pick_route_candidates %>% rename(nfl_id_o = nfl_id), by = "nfl_id_o") %>%
       inner_join(
-        frames_snap %>% 
+        pick_route_candidates %>% 
+          rename(nfl_id_o = nfl_id), 
+        by = c("game_id", "play_id", "nfl_id_o")
+      ) %>%
+      inner_join(
+        snap_frames %>% 
           filter(side == "O") %>% 
           select(
+            game_id,
+            play_id,
             nfl_id_o = nfl_id,
             display_name_o = display_name,
             jersey_number_o = jersey_number
           ),
-        , by = "nfl_id_o"
+        by = c("game_id", "play_id", "nfl_id_o")
       ) %>% 
       inner_join(
-        frames_snap %>% 
+        snap_frames %>% 
           filter(side == "D") %>% 
           select(
+            game_id,
+            play_id,
             nfl_id_d_ball_snap = nfl_id,
             display_name_d_ball_snap = display_name,
             jersey_number_d_ball_snap = jersey_number
           ),
-        , by = "nfl_id_d_ball_snap"
+        by = c("game_id", "play_id", "nfl_id_d_ball_snap")
       ) %>% 
       inner_join(
-        frames_snap %>% 
+        snap_frames %>% 
           filter(side == "D") %>% 
           select(
+            game_id,
+            play_id,
             nfl_id_d_pass_throw = nfl_id,
             display_name_d_pass_throw = display_name,
             jersey_number_d_pass_throw = jersey_number
           ),
-        , by = "nfl_id_d_pass_throw"
+        by = c("game_id", "play_id", "nfl_id_d_pass_throw")
       )
     defenders
     
@@ -253,7 +395,7 @@ plot_pick_route_play <-
     
     route_frames <-
       tracking %>%
-      dplyr::group_by(nfl_id) %>%
+      dplyr::group_by(game_id, play_id, nfl_id) %>%
       dplyr::mutate(
         group = dplyr::case_when(
           # frame_id == min(frame_id) ~ 1L,
@@ -266,9 +408,9 @@ plot_pick_route_play <-
       dplyr::ungroup() %>%
       dplyr::filter(group == 1L) %>%
       dplyr::select(-group) %>% 
-      dplyr::select(nfl_id, frame_id, event, side, x, y)
+      dplyr::select(game_id, play_id, nfl_id, frame_id, event, side, x, y)
     
-    target_id <- play$target_nfl_id
+    
     target_route_frames <-
       route_frames %>% 
       filter(nfl_id == !!target_id)
@@ -279,7 +421,7 @@ plot_pick_route_play <-
     
     ball <-
       frames %>%
-      dplyr::distinct(event, x = ball_x, y = ball_y) %>%
+      dplyr::distinct(game_id, play_id, event, x = ball_x, y = ball_y) %>%
       dplyr::mutate(nfl_id = NA_real_)
     
     if(is.null(yardmin) | is.null(yardmax)) {
@@ -342,7 +484,7 @@ plot_pick_route_play <-
     }
     
     events <- c("ball_snap", "pass_throw")
-
+    
     p <-
       frames %>%
       ggplot2::ggplot() +
@@ -449,7 +591,6 @@ plot_pick_route_play <-
         # subtitle = "",
         caption = glue::glue("Q{play$quarter}: {play$play_description}<br />
                              Intended receiver: {target$display_name} ({target$jersey_number})<br />
-                             <b>{pick_route_combos_caption}</b><br />
                              {defenders_caption}<br />
                              game_id = {game$game_id}, play_id = {play$play_id}"),
         x = NULL, y = NULL

@@ -4,17 +4,49 @@ source("scripts/gg_field.R")
 source("scripts/read_files.R")
 # remotes::install_github("dreamRs/prefixer") # to help with package namespacing
 
+#' @description Used by distance calculation functions such as `identify_nearby_players()`
 .coerce_to_mat <- function(data) {
   res <- data %>%
     dplyr::select(x, y) %>%
     as.matrix()
-  rownames(res) <- data[["nfl_id"]]
+  rownames(res) <- data$nfl_id
   res
 }
 
-#' Compute min distances between players
+#' Identify nearby players.
 #' 
-#' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method
+#' @description Identify players within `cutoff` yeards of another player.
+#' @param data A data.frame with 3 columns: `nfl_id`, `x`, `y`. These should correspond to offensive route runners on either the ball/QB's left- or right-hand side.
+#' @return An empty tibble if no players meet `cutoff` criteria. Otherwise, a tibble with 4 columns: `nfl_id`, `nfl_id_match`, `dist`, `idx_match`.
+identify_nearby_players <- function(data, cutoff = 2) {
+  if(nrow(data) <= 2L) {
+    return(tibble())
+  }
+  mat <- data %>% .coerce_to_mat()
+  dists <- fields::rdist(mat, mat)
+  diag(dists) <- Inf
+  has_nearby_player <- any(dists <= cutoff)
+  if(!has_nearby_player) {
+    return(tibble())
+  }
+  nms <- rownames(mat)
+  rownames(dists) <- nms
+  colnames(dists) <- nms
+  dists_tidy <-
+    dists %>%
+    tibble::as_tibble(rownames = "nfl_id") %>%
+    tidyr::pivot_longer(-c(nfl_id), names_to = "nfl_id_match", values_to = "dist") %>%
+    dplyr::filter(dist <= cutoff) %>% 
+    dplyr::mutate(dplyr::across(dplyr::starts_with("nfl_id"), as.integer)) %>% 
+    dplyr::group_by(nfl_id) %>% 
+    dplyr::mutate(idx_match = dplyr::row_number(dist)) %>% 
+    dplyr::ungroup()
+  dists_tidy
+}
+
+#' Compute min distances between players.
+#' 
+#' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method.
 #' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
 compute_min_distances <- function(data) {
@@ -49,12 +81,17 @@ compute_min_distances <- function(data) {
   res
 }
 
-#' @source https://stackoverflow.com/a/17313561/120898
+#' @seealso \url(https://stackoverflow.com/a/17313561/120898)
 pts <- function(x) {
   as.numeric(grid::convertUnit(grid::unit(x, "pt"), "mm"))
 }
 
+#' Round to multiple of any number.
+#'
+#' \code{\link[plyr]{round_any}}
+#' @description Round to multiple of any number.
 #' @source https://stackoverflow.com/questions/43627679/round-any-equivalent-for-dplyr/46489816#46489816
+#' @seealso \url(http://search.r-project.org/library/plyr/html/round_any.html)
 round_any <- function(x, accuracy, f = round) {
   f(x / accuracy) * accuracy
 }
@@ -88,7 +125,11 @@ animate_play <-
     
     tracking <-
       tracking %>% 
-      dplyr::left_join(positions %>% dplyr::select(position, side), by = "position") %>%
+      dplyr::left_join(
+        positions %>% 
+          dplyr::select(position, position_category = category, side), 
+        by = "position"
+      ) %>%
       dplyr::inner_join(meta, by = c("game_id", "play_id"))
     
     if(nrow(tracking) == 0L) {
@@ -141,6 +182,7 @@ animate_play <-
       min_dists <-
         tracking_dists %>%
         dplyr::filter(position != "QB") %>%
+        dplyr::filter(position_category != "DL") %>% 
         dplyr::select(frame_id, nfl_id, side, x, y) %>%
         tidyr::nest(data = -c(frame_id)) %>%
         dplyr::mutate(data = purrr::map(data, compute_min_distances)) %>%
