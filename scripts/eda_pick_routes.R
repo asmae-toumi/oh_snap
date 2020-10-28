@@ -113,9 +113,46 @@ tracking_cleaned
 
 snap_frames_cleaned <- tracking_cleaned %>% filter(event == "ball_snap")
 snap_frames_cleaned
+snap_frames_cleaned %>% distinct(game_id, play_id)
 
 receivers_at_snap <- snap_frames_cleaned %>% add_idx_y_col()
 receivers_at_snap
+# receivers_at_snap %>% distinct(game_id, play_id)
+# dropped_ids <-
+#   snap_frames_cleaned %>% 
+#   distinct(game_id, play_id) %>% 
+#   anti_join(
+#     receivers_at_snap %>% 
+#       distinct(game_id, play_id)
+#   )
+# dropped_ids
+# dropped_ids %>% 
+#   head(3) %>% 
+#   mutate(
+#     path = fs::path("figs", sprintf("%s-%s.png", game_id, play_id)),
+#     plot =
+#       pmap(
+#         list(game_id, play_id),
+#         ~ plot_play(game_id = ..1, play_id = ..2, save = FALSE) +
+#           theme(
+#             plot.title = ggtext::element_markdown(size = 12),
+#             plot.caption = ggtext::element_markdown(size = 14)
+#           )
+#       ),
+#     path = map2(plot, path, ~ ggsave(plot = ..1, filename = ..2, height = 10, width = 10, type = "cairo"))
+#   )
+
+# Note that there are plays without routes, including some completions and incompletions.
+snap_frames_cleaned %>%
+  filter(side == "O") %>%
+  filter(position != "QB") %>% 
+  group_by(game_id, play_id, frame_id) %>% 
+  summarize(n_na = sum(is.na(route)), n = n()) %>% 
+  ungroup() %>% 
+  inner_join(plays) %>% 
+  count(pass_result, all_na_routes = ifelse(n_na == n, "no_routes", "has_routes")) %>% 
+  pivot_wider(names_from = all_na_routes, values_from = n, values_fill = 0L) %>% 
+  mutate(frac = no_routes / (no_routes + has_routes))
 
 # # These are candidates for pick plays due to close alignment at the snap.
 # potential_picks_based_on_snap <-
@@ -158,28 +195,27 @@ seconds_frames <-
   )
 seconds_frames
 
-receivers_at_seconds <- 
-  seconds_frames %>% 
-  select(-x_side, -y_side) %>% 
+receivers_at_seconds <-
+  seconds_frames %>%
+  select(-x_side, -y_side) %>%
   # Use the `y_side` from the snap time, not at each seconds' time.
   inner_join(
-    seconds_frames %>% 
-      filter(sec == 0) %>% 
-      filter(y_side != "mid") %>% 
-      filter(x_side != "backfield") %>% 
-      filter(side == "O") %>% 
-      filter(position != "QB") %>% 
-      group_by(game_id, play_id, y_side, x_side, frame_id) %>% 
-      mutate(n_route = n()) %>% 
-      ungroup() %>% 
+    seconds_frames %>%
+      filter(sec == 0) %>%
+      filter(y_side != "mid") %>%
+      filter(x_side != "backfield") %>%
+      filter(side == "O") %>%
+      filter(position != "QB") %>%
+      group_by(game_id, play_id, y_side, x_side, frame_id) %>%
+      mutate(n_route = n()) %>%
+      ungroup() %>%
       select(game_id, play_id, nfl_id, x_side, y_side, n_route),
     by = c("game_id", "play_id", "nfl_id")
-  ) %>% 
-  add_idx_y_col() %>% 
+  ) %>%
+  add_idx_y_col() %>%
   rename(x_side_init = x_side, y_side_init = y_side)
 receivers_at_seconds
 
-time1 <- tic()
 # Identify pick plays by crosses in routes (i.e. intersections).
 receiver_intersections <-
   receivers_at_seconds %>% 
@@ -198,15 +234,42 @@ receiver_intersections <-
   filter(has_intersection) %>% 
   select(-data, -has_intersection) %>% 
   mutate(n_intersection = map_dbl(intersection, ~nrow(.x) / 2L)) %>% 
-  # unnest(intersection) %>% 
+  unnest(intersection) # %>% 
   # select(game_id, play_id, y_side_init, n_route, nfl_id, nfl_id_intersect, n_intersection, intersection) %>% 
   # mutate(
   #   x_intersect = map_dbl(intersection, ~.x[[1]]),
   #   y_intersect = map_dbl(intersection, ~.x[[2]])
   # ) %>% 
-  select(-intersection)
-time2 <- toc()
-receiver_intersections
+  # select(-intersection)
+receiver_intersections %>% distinct(game_id, play_id)
+ids2 <- receivers_at_seconds %>% filter(sec == 0) %>% distinct(game_id, play_id)
+ids1 <- plays %>% inner_join(games) %>% filter(week == 1) %>% distinct(game_id, play_id)
+
+ids2 %>% anti_join(ids1)
+ids1 %>% 
+  anti_join(ids2) %>% 
+  inner_join(plays) %>% 
+  select(personnel_o, offense_formation)
+
+
+receiver_intersections_meta <-
+  receiver_intersections %>% 
+  distinct(game_id, play_id, y_side_init, nfl_id) %>% 
+  inner_join(plays %>% select(game_id, play_id, target_nfl_id), by = c("game_id", "play_id")) %>% 
+  group_by(game_id, play_id) %>% 
+  summarize(
+    target_is_intersect = sum(target_nfl_id == nfl_id)
+  ) %>% 
+  ungroup() %>% 
+  inner_join(plays %>% select(game_id, play_id, pass_result, play_result, epa), by = c("game_id", "play_id"))
+receiver_intersections_meta
+
+receiver_intersections_meta %>% 
+  drop_na() %>% 
+  count(target_is_intersect, pass_result) %>% 
+  group_by(target_is_intersect) %>% 
+  mutate(pct = 100 * n / sum(n)) %>% 
+  ungroup()
 
 # How many intersections are there?
 receiver_intersections_filtered <-
@@ -219,85 +282,76 @@ receiver_intersections_filtered
 receiver_intersections_filtered %>% 
   count(n_route, n_intersection)
 
-set.seed(42)
-res_intersections <-
-  receiver_intersections_filtered %>% 
-  group_by(n_route, n_intersection) %>% 
-  mutate(n = n(), n_sample = ifelse(n <= 3L, n, 3L)) %>% 
-  sample_n(size = n_sample) %>% 
-  ungroup() %>% 
-  mutate(
-    lab = sprintf("Pick route example with %d receivers on one side of field and %d intersection%s", n_route, n_intersection, ifelse(n_intersection > 1L, "s", "")),
-    path = file.path("figs", sprintf("pick_example-%d_receivers-%d_pick%s-%s-%s.png", n_route, n_intersection, ifelse(n_intersection > 1L, "s", ""), game_id, play_id))
-  ) %>%
-  mutate(
-    plot =
-      pmap(
-        list(game_id, play_id, lab),
-        ~ plot_pick_route_play(game_id = ..1, play_id = ..2, save = FALSE) +
-          labs(subtitle = ..3) +
-          theme(
-            plot.title = ggtext::element_markdown(size = 12),
-            plot.subtitle = element_text(size = 12),
-            plot.caption = ggtext::element_markdown(size = 12)
-          )
-      ),
-    # plot = map2(plot, lab, ~..1 + labs(subtitle = ..2) ),
-    path = map2(plot, path, ~ ggsave(plot = ..1, filename = ..2, height = 10, width = 10, type = "cairo"))
-  )
-res_intersections
+# # Visual inspection
+# set.seed(42)
+# res_intersections <-
+#   receiver_intersections_filtered %>% 
+#   group_by(n_route, n_intersection) %>% 
+#   mutate(n = n(), n_sample = ifelse(n <= 3L, n, 3L)) %>% 
+#   sample_n(size = n_sample) %>% 
+#   ungroup() %>% 
+#   mutate(
+#     lab = sprintf("Pick route example with %d receivers on one side of field and %d intersection%s", n_route, n_intersection, ifelse(n_intersection > 1L, "s", "")),
+#     path = file.path("figs", sprintf("pick_example-%d_receivers-%d_pick%s-%s-%s.png", n_route, n_intersection, ifelse(n_intersection > 1L, "s", ""), game_id, play_id))
+#   ) %>%
+#   mutate(
+#     plot =
+#       pmap(
+#         list(game_id, play_id, lab),
+#         ~ plot_pick_route_play(game_id = ..1, play_id = ..2, save = FALSE) +
+#           labs(subtitle = ..3) +
+#           theme(
+#             plot.title = ggtext::element_markdown(size = 12),
+#             plot.subtitle = element_text(size = 12),
+#             plot.caption = ggtext::element_markdown(size = 12)
+#           )
+#       ),
+#     # plot = map2(plot, lab, ~..1 + labs(subtitle = ..2) ),
+#     path = map2(plot, path, ~ ggsave(plot = ..1, filename = ..2, height = 10, width = 10, type = "cairo"))
+#   )
+# res_intersections
 
-intersections_after <- function(sec) {
-  data <-
-    receivers_at_seconds %>% 
-    filter(n_route >= 2L) %>% 
-    filter(sec <= !!sec) %>% 
-    group_by(game_id, play_id) %>% 
-    filter(max(sec) >= !!sec) %>% 
-    ungroup() %>% 
-    select(game_id, play_id, y_side_init, nfl_id, frame_id, x, y) %>% 
-    nest(data = c(nfl_id, frame_id, x, y))
-  n_row <- data %>% nrow()
-  n_intersection <-
-    data %>% 
-    mutate(
-      intersection = map(data, identify_intersection),
-      has_intersection = map_lgl(intersection, ~nrow(.x) > 0),
-    ) %>% 
-    filter(has_intersection) %>% 
-    select(-data, -has_intersection) %>% 
-    mutate(n_intersection = map_dbl(intersection, ~nrow(.x) / 2L)) %>% 
-    summarize(across(n_intersection, sum)) %>% 
-    pull(n_intersection)
-  tibble(n_max = n_row, n_intersection = n_intersection)
-}
+# # Sensitivity test
+# intersections_after <- function(sec) {
+#   data <-
+#     receivers_at_seconds %>% 
+#     filter(n_route >= 2L) %>% 
+#     filter(sec <= !!sec) %>% 
+#     group_by(game_id, play_id) %>% 
+#     filter(max(sec) >= !!sec) %>% 
+#     ungroup() %>% 
+#     select(game_id, play_id, y_side_init, nfl_id, frame_id, x, y) %>% 
+#     nest(data = c(nfl_id, frame_id, x, y))
+#   n_row <- data %>% nrow()
+#   n_intersection <-
+#     data %>% 
+#     mutate(
+#       intersection = map(data, identify_intersection),
+#       has_intersection = map_lgl(intersection, ~nrow(.x) > 0),
+#     ) %>% 
+#     filter(has_intersection) %>% 
+#     select(-data, -has_intersection) %>% 
+#     mutate(n_intersection = map_dbl(intersection, ~nrow(.x) / 2L)) %>% 
+#     summarize(across(n_intersection, sum)) %>% 
+#     pull(n_intersection)
+#   tibble(n_max = n_row, n_intersection = n_intersection)
+# }
+# 
+# # Tallying how many intersections happen up through x seconds after the ball has been snapped.
+# intersections_n <-
+#   tibble(
+#     sec = seq(0.5, 3, by = 0.5)
+#   ) %>% 
+#   mutate(data = map(sec, intersections_after)) %>% 
+#   unnest(data)
+# intersections_n
+# 
+# intersections_n %>% 
+#   filter(sec >= 1) %>% 
+#   mutate(pct_intersection = 100 * n_intersection / n_max)
 
-# Tallying how many intersections happen up through x seconds after the ball has been snapped.
-intersections_n <-
-  tibble(
-    sec = seq(0.5, 3, by = 0.5)
-  ) %>% 
-  mutate(data = map(sec, intersections_after)) %>% 
-  unnest(data)
-intersections_n
 
-intersections_n %>% 
-  filter(sec >= 1) %>% 
-  mutate(pct_intersection = 100 * n_intersection / n_max)
-
-receivers_at_seconds %>% 
-  group_by(game_id, play_id) %>% 
-  filter(sec == max(sec)) %>% 
-  ungroup() %>% 
-  count(sec) %>% 
-  mutate(n_cumu = cumsum(n))
-
-receivers_at_seconds %>% 
-  group_by(game_id, play_id) %>% 
-  filter(sec == max(sec)) %>% 
-  ungroup() %>% 
-  filter(sec == 0.5)
-
+# ----
 # Trying to track where changes happen in relative y position of a receiver compared to their position at the snap.
 receivers_at_seconds_changes <-
   receivers_at_seconds %>% 
