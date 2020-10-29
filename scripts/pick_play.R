@@ -22,9 +22,10 @@ add_x_side_col <- function(data, cutoff = 2.5) {
       #     TRUE ~ NA_character_
       #   )
       x_side = 
-        case_when(
-          (x + !!cutoff) < ball_x ~ "backfield",
-          TRUE ~ "los"
+        if_else(
+          (x + !!cutoff) < ball_x,
+          "backfield",
+          "los"
         )
     )
 }
@@ -78,13 +79,25 @@ add_idx_y_col <- function(data) {
     ungroup()
 }
 
-
-identify_intersection_xy <- function(data) {
+identify_intersection_xy <- function(data, pad_backwards = TRUE, pad_x = 1) {
   nfl_ids <- data %>% distinct(nfl_id) %>% pull(nfl_id)
   if(length(nfl_ids) <= 1L) {
     return(tibble())
   }
-
+  
+  if(pad_backwards) {
+    first_x <-
+      data %>% 
+      group_by(nfl_id) %>% 
+      mutate(x = dplyr::first(x)) %>% 
+      ungroup()
+    padded_x <-
+      first_x %>% 
+      mutate(x = x - !!pad_x)
+    data <-
+      bind_rows(padded_x, data)
+  }
+  
   data_trans <-
     data %>% 
     nest(data = -c(nfl_id)) %>% 
@@ -116,10 +129,23 @@ identify_intersection_xy <- function(data) {
     select(nfl_id, nfl_id_intersect, x_intersect, y_intersect)
 }
 
-identify_intersection <- function(data) {
+identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
   nfl_ids <- data %>% distinct(nfl_id) %>% pull(nfl_id)
   if(length(nfl_ids) <= 1L) {
     return(tibble())
+  }
+  
+  if(pad_backwards) {
+    first_x <-
+      data %>% 
+      group_by(nfl_id) %>% 
+      mutate(x = dplyr::first(x)) %>% 
+      ungroup()
+    padded_x <-
+      first_x %>% 
+      mutate(x = x - !!pad_x)
+    data <-
+      bind_rows(padded_x, data)
   }
   
   data_trans <-
