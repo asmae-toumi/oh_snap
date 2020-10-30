@@ -7,10 +7,8 @@ source('scripts/pick_play.R')
 games <- read_games()
 plays <- read_plays()
 
-n_week <- 17L
 tracking <-
-  read_tracking(max_week = 1L) %>% 
-  select(-a, -s, -o, -dis, -dir, -time, -jersey_number, -team, -week) %>% 
+  read_tracking(max_week = 1L, minimal = TRUE) %>% 
   add_side_cols()
 
 # Filter out stuff before the snap and after the pass has arrived.
@@ -57,27 +55,42 @@ events_arrived <- c('pass_arrived')
 # plays %>% semi_join(tracking %>% filter(event == 'touchback')) %>% select(play_description) # DB intercepts and stays in endzone
 # plays %>% semi_join(tracking %>% filter(event == 'penalty_accepted')) %>% select(play_description) # janky
 # plays %>% semi_join(tracking %>% filter(event == 'shift')) %>% select(play_description)
-# tracking_events_frames <-
-#   tracking %>%
-#   filter(event != 'None') %>%
-#   distinct(game_id, play_id, event, frame_id) %>%
-#   pivot_wider(names_from = event, values_from = frame_id, values_fn = dplyr::first)
-# 
-# tracking_events_frames %>%
-#   filter(!is.na(pass_arrived)) %>%
-#   select(game_id, play_id, pass_arrived, matches('^pass_outcome_'), -pass_outcome_touchdown) %>% 
-#   janitor::remove_empty(which = c('cols')) %>%
-#   # inner_join(plays %>% select(game_id, play_id, play_description))
-#   pivot_longer(-c(game_id, play_id, pass_arrived)) %>% 
-#   drop_na() %>% 
-#   mutate(diff = value - pass_arrived) %>% 
-#   group_by(name) %>% 
-#   summarize(across(diff, list(mean = mean, min = min, max = max), .names = '{fn}'), n = n()) %>% 
-#   ungroup()
+tracking_events_frames <-
+  tracking %>%
+  filter(event != 'None') %>%
+  distinct(game_id, play_id, event, frame_id) %>%
+  pivot_wider(names_from = event, values_from = frame_id, values_fn = dplyr::first)
 
+# Checking how long average time between arrival and throw is.
+tracking_events_frames %>%
+  filter(!is.na(pass_arrived)) %>%
+  select(game_id, play_id, pass_arrived, matches('^pass_outcome_'), -pass_outcome_touchdown) %>%
+  janitor::remove_empty(which = c('cols')) %>%
+  # inner_join(plays %>% select(game_id, play_id, play_description))
+  pivot_longer(-c(game_id, play_id, pass_arrived)) %>%
+  drop_na() %>%
+  mutate(diff = value - pass_arrived) %>%
+  group_by(name) %>%
+  summarize(across(diff, list(mean = mean, min = min, max = max), .names = '{fn}'), n = n()) %>%
+  ungroup()
+
+# Checking weird things.
+pass_thrown_but_no_outcome <-
+  tracking_events_frames %>%
+  filter((!is.na(pass_forward) | !is.na(pass_shovel)) & (is.na(pass_outcome_caught) & is.na(pass_outcome_incomplete) & is.na(pass_outcome_interception) & is.na(pass_outcome_touchdown))) %>% 
+  janitor::remove_empty(which = c('cols'))
+pass_thrown_but_no_outcome
+
+pass_thrown_but_no_outcome_or_arrival <-
+  tracking_events_frames %>%
+  filter((!is.na(pass_forward) | !is.na(pass_shovel)) & (is.na(pass_arrived) & is.na(pass_outcome_caught) & is.na(pass_outcome_incomplete) & is.na(pass_outcome_interception) & is.na(pass_outcome_touchdown))) %>% 
+  janitor::remove_empty(which = c('cols'))
+pass_thrown_but_no_outcome_or_arrival
+
+# TODO: Update this clipping stuff based on above knowledge
 tracking_clipped_at_throw <- tracking %>% clip_tracking_at_events(events = events_throw)
 tracking_clipped_at_end_route <- tracking %>% clip_tracking_at_events(events = events_end_route)
-rm('tracking')
+rm('tracking') # Helpful for my 8 GB RAM laptop when working with all 17 weeks.
 snap_frames <- tracking_clipped_at_throw %>% filter(event == 'ball_snap')
 # snap_frames %>% filter(position == 'QB') %>% mutate(x1 = x - ball_x, x2 = x - los) %>% group_by(play_direction) %>% summarize(across(c(x1, x2), c(min = min, mean = mean, max = max)))
 throw_frames <- tracking_clipped_at_throw %>% filter(event %in% events_throw)
@@ -168,6 +181,7 @@ summarize_events_debug <- function(x1, x2) {
     pivot_wider(names_from = event, values_from = c(ball_x, ball_y, frame_id), values_fn = length)
 }
 
+# Probably should use the 'pass_arrived' event instead of the various `events_end_route` events to get a more accurate pass distance. I experimented with it but didn't like how the ids matched up.
 pass_dists <-
   summarize_events(
     tracking_clipped_at_throw %>% 

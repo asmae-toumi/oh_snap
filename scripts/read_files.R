@@ -1,4 +1,5 @@
 
+library(tidyverse)
 
 read_colors <- memoise::memoise({function() {
   file.path("data", "teamcolors.csv") %>% 
@@ -32,10 +33,34 @@ read_games <- memoise::memoise({function() {
     dplyr::mutate(dplyr::across(game_date = lubridate::mdy))
 }})
 
+read_players <- memoise::memoise({function(positions = read_positions()) {
+  file.path("data", "players.csv") %>% 
+    readr::read_csv() %>%
+    janitor::clean_names() %>% 
+    dplyr::left_join(positions %>% dplyr::select(position, side)) %>% 
+    dplyr::mutate(dplyr::across(birth_date, ~lubridate::parse_date_time(.x, order = c('y-m-d', 'm/d/y'), exact = FALSE)))
+}})
+
 read_week1 <- memoise::memoise({function() {
   file.path("data", "week1.csv") %>% 
     vroom::vroom() %>%
     janitor::clean_names()
+}})
+
+# regenerate_all_weeks <- function(dir = file.path('data', 'nfl-big-data-bowl-2021')) {
+#   paths <- fs::dir_ls(dir, regexp = 'week\\d+')
+#   all_weeks <-
+#     paths %>% 
+#     purrr::map_df(vroom::vroom) %>% 
+#     # purrr::map_df(readr::read_csv) %>% 
+#     janitor::clean_names() %>% 
+#     arrow::write_parquet(file.path('data', 'all_weeks.parquet'))
+# }
+
+read_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
+  sprintf('https://raw.githubusercontent.com/guga31bb/nflfastR-data/master/data/play_by_play_%s.rds', season) %>% 
+    url() %>% 
+    read_rds()
 }})
 
 read_all_weeks <- function() {
@@ -44,14 +69,40 @@ read_all_weeks <- function() {
     janitor::clean_names()
 }
 
-read_tracking <- function(max_week = 1L, positions = read_positions()) {
+regenerate_all_week_minimal <- function() {
+  tracking <- read_all_weeks()
+  tracking %>% 
+    select(-a, -s, -dis, -dir, -time) %>% # , -jersey_number, -team) %>% 
+    arrow::write_parquet(file.path('data', 'all_weeks_minimal.parquet'))
+}
+
+read_all_weeks_minimal <- function() {
+  file.path("data", "all_weeks_minimal.parquet") %>% 
+    arrow::read_parquet()
+}
+
+read_tracking <- function(max_week = 1L, positions = read_positions(), minimal = TRUE, drop_cols = TRUE, cols = c('a', 's', 'dis', 'dir', 'time', 'display_name', 'jersey_number', 'team'), standardize = TRUE) {
   if(max_week == 1L) {
     tracking <- read_week1() %>% mutate(week = 1L)
   } else {
+    if(minimal) {
+      tracking <- read_all_weeks_minimal()
+    } else {
+      tracking <- read_all_weeks()
+    }
+  }
+  
+  tracking <-
+    tracking %>% 
+    mutate(across(week, ~str_remove(.x, 'week') %>% as.integer())) %>% 
+    filter(week <= max_week) %>% 
+    select(-week)
+  
+  if(drop_cols) {
+    cols_not_display_name <- setdiff(cols, 'display_name')
     tracking <-
-      read_all_weeks() %>%
-      mutate(across(week, ~str_remove(.x, 'week') %>% as.integer())) %>%
-      filter(week <= n_week)
+      tracking %>% 
+      select(-any_of(cols_not_display_name))
   }
   
   tracking <-
@@ -62,14 +113,24 @@ read_tracking <- function(max_week = 1L, positions = read_positions()) {
   
   tracking <-
     tracking %>%
-    filter(display_name != 'Football') %>%
-    select(-display_name) %>% 
+    filter(display_name != 'Football')
+  
+  if(('display_name' %in% names(tracking)) & any('display_name' %in% cols)) {
+    tracking <- tracking %>% select(-display_name)
+  }
+  
+  tracking <-
+    tracking %>% 
     inner_join(
       ball %>% 
         select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
       by = c('frame_id', 'game_id', 'play_id')
     )
 
+  if(!standardize) {
+    return(tracking)
+  }
+  
   line_of_scrimmage <-
     tracking %>%
     filter(event == 'ball_snap') %>% 
@@ -92,7 +153,7 @@ read_tracking <- function(max_week = 1L, positions = read_positions()) {
     )
 }
 
-
+# Probably need to put this in some other file since it doesn't go perfectly with all these `read_*` functions.
 # When `group = 0`, it's pre-snap. When `group = 2`, it's `events`.
 clip_tracking_at_events <- function(tracking, events) {
   tracking %>% 

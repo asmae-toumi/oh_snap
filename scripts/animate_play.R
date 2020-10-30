@@ -50,6 +50,7 @@ identify_nearby_players <- function(data, cutoff = 2) {
 #' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
 compute_min_distances <- function(data) {
+  # TODO: Add something that will assign left-over defenders as double-coverage defenders.
   o <-
     data %>%
     dplyr::filter(side == "O") %>%
