@@ -44,6 +44,19 @@ identify_nearby_players <- function(data, cutoff = 2) {
   dists_tidy
 }
 
+identify_nearest_player <- function(data, nfl_id = 79848, side = c('O', 'D')) {
+  # side <- match.arg(side)
+  mat <- data %>% filter(side == !!side & nfl_id != !!nfl_id) %>% .coerce_to_mat()
+  v <- data %>% filter(nfl_id == !!nfl_id) %>% .coerce_to_mat()
+  dists <- fields::rdist(mat, v)
+  rownames(dists) <- rownames(mat)
+  # res <- as.numeric(dists[which.min(dists), ])
+  # res <- dists[which.min(dists), ]
+  res <- as.numeric(names(dists[which.min(dists), ]))
+  res
+}
+
+
 #' Compute min distances between players.
 #' 
 #' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method.
