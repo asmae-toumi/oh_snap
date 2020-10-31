@@ -6,31 +6,41 @@ games <- read_games()
 plays <- read_plays()
 positions <- read_positions()
 
+# Distance calculation
 .dist <- function(x1, x2, y1, y2) {
   sqrt((x2 - x1)^2 + (y2 - y1)^2)
 }
 
+# Angle difference calculation. (Not totally sure this is correct.)
 .angle_diff <- function(a1, a2) {
   diff <- a2 - a1
   (diff + 180) %% 360 - 180
 }
 
+# `x1` is tracking data (pre-filtered for defenders who aren't DLs).
+# `x2` is also tracking data, but it's filtered to either the offense or defense, depending on whether we are trying to find the nearest offensive/defensive player.
+# `side` indicates if we are trying to find the nearest offensive player ('o') or defensive player ('d')
 .join_and_filter <- function(x1, x2, side = c('o', 'd')) {
   side <- match.arg(side)
   side_upp <- side %>% toupper()
   side_low <- side %>% tolower()
   col_x_sym <- sprintf('x_%s', side_low) %>% sym()
   col_y_sym <- sprintf('y_%s', side_low) %>% sym()
+
   x1 %>% 
     left_join(
       x2 %>% 
         filter(side == !!side_upp) %>% 
+        # Add `_o` or `_d` suffix to variables that aren't being used to join.
         rename_with(~sprintf('%s_%s', .x, side_low), -c(game_id, play_id, frame_id, event))
     ) %>% 
+    # Add a temporary distance column to filter down to other player who is closest.
     mutate(dist = .dist(x, !!col_x_sym, y, !!col_y_sym)) %>% 
     group_by(game_id, play_id, frame_id, nfl_id) %>% 
+    # Filter for just the player in `x2` who is closest to the player in `x1`.
     filter(dist == min(dist)) %>% 
     ungroup() %>% 
+    # Drop the temporary column.
     select(-dist)
 }
 
@@ -38,12 +48,14 @@ events_throw <- c('pass_forward', 'pass_shovel')
 # Add `pass_arrived` and clip on the first of arrived or outcome.
 events_pass_outcome <- c('pass_arrived', sprintf('pass_outcome_%s', c('caught', 'incomplete', 'interception', 'touchdown')))
 
-do_derive_and_export_coverage_identification_features <- function(w) {
-  w <- 1
+# Big ass function to compute the features on week at a time.
+do_derive_and_export_coverage_identification_features <- function(week) {
+  # w <- 1
   tracking <-
-    read_week(w) %>% 
+    read_week(week) %>% 
     left_join(positions %>% select(position, side, position_category = category))
 
+  # We only want plays with throws (no sacks).
   throw_ids <- 
     tracking %>% 
     filter(event %in% events_throw) %>% 
@@ -57,13 +69,20 @@ do_derive_and_export_coverage_identification_features <- function(w) {
   
   tracking_clipped_at_pass_outcome <- 
     tracking %>% 
+    # Use `semi_join` like a filter, reducing the data to just `game_id`-`play_id`s where there are throws.
     semi_join(throw_ids) %>% 
-    clip_tracking_at_events(events = events_pass_outcome)
+    # Remove frames before the snap (even though these are included in the paper, they were not among the features found to be significant) and frames after the catch.
+    clip_tracking_at_events(events = events_pass_outcome) %>% 
+    # Don't need QB.
+    filter(position != 'QB') %>% 
+    # Don't need to assing coverages for DLs, even though they may play some coverage on some plays.
+    filter(position_category != 'DL') %>% 
+    select(game_id, play_id, frame_id, event, nfl_id, position, side, x, y, s, o, dir)
   tracking_clipped_at_pass_outcome
   
+  # Create a df to be used with a non-equi join later for "ranges" of frames, marked by whether the frames comes before/after the snap/throw/pass outcome.
   frame_id_ranges <- 
     tracking_clipped_at_pass_outcome %>% 
-    # filter(event != 'None') %>% 
     filter(event %in% c('ball_snap', events_throw, events_pass_outcome)) %>% 
     distinct(game_id, play_id, frame_id, event) %>% 
     mutate(
@@ -85,17 +104,15 @@ do_derive_and_export_coverage_identification_features <- function(w) {
   frame_id_ranges  
   # frame_id_ranges %>% count(event)
   
-  tracking_clipped_at_pass_outcome_minimal <-
-    tracking_clipped_at_pass_outcome %>% 
-    filter(position != 'QB') %>% 
-    filter(position_category != 'DL') %>% 
-    select(game_id, play_id, frame_id, event, nfl_id, position, side, x, y, s, o, dir)
-  
   features_all_frames <-
-    tracking_clipped_at_pass_outcome_minimal %>% 
+    tracking_clipped_at_pass_outcome %>% 
+    # We only care about defenders.
     filter(side == 'D') %>% 
-    .join_and_filter(tracking_clipped_at_pass_outcome_minimal, 'o') %>% 
-    .join_and_filter(tracking_clipped_at_pass_outcome_minimal, 'd') %>% 
+    # Join and filter down to the closest offensive player.
+    .join_and_filter(tracking_clipped_at_pass_outcome, 'o') %>% 
+    # ... to the closest defensive players.
+    .join_and_filter(tracking_clipped_at_pass_outcome, 'd') %>% 
+    # Calculations for the features specified in the paper.
     mutate(
       dist_o = .dist(x, x_o, y, y_o),
       dist_d = .dist(x, x_d, y, y_d),
@@ -106,18 +123,20 @@ do_derive_and_export_coverage_identification_features <- function(w) {
     )
   features_all_frames
   
+  # Prep for a non-equi join to group frames by the events 'postsnap-prethrow' and 'postthrow-preoutcome'
   dt1 <- features_all_frames %>% select(-event) %>% data.table::as.data.table()
   dt2 <- frame_id_ranges %>% filter(!is.na(frame_id_last)) %>% data.table::as.data.table()
   
+  # Do the non-equi join.
   features_all_frames <-
     dt1[dt2, on=.(game_id = game_id, play_id = play_id, frame_id >= frame_id_first, frame_id < frame_id_last)] %>% 
     as_tibble() %>% 
     select(-frame_id.1) %>% 
+    # Move `event` to the first column just to make it easy to see.
     relocate(event)
   features_all_frames
-  
-  # rm(list('dt1', 'dt2'))
-  
+
+  # Aggreggate to the "important" frames, i.e. the snap, throw, and outcome.
   features <-
     features_all_frames %>% 
     # Only keeping the 
@@ -127,6 +146,7 @@ do_derive_and_export_coverage_identification_features <- function(w) {
       across(c(x, y, s, dist_o, dist_d, dist_rat, dir_o_diff, o_o_diff), list(mean = mean, var = var))
     ) %>% 
     ungroup() %>% 
+    # Rename columns to match up with paper's names.
     rename(
       off_mean = dist_o_mean,
       def_mean = dist_d_mean,
@@ -141,10 +161,11 @@ do_derive_and_export_coverage_identification_features <- function(w) {
     )
   features
   
-  features %>% write_csv(file.path('data', sprintf('coverage_identification_features_week%d.csv', w)))
+  features %>% write_csv(file.path('data', sprintf('coverage_identification_features_week%d.csv', week)))
 }
 
 # weeks <- 1:17
 weeks <- 1
+# Call the function for each week, one at a time. (No need to save the results to a variable, hence `walk`.)
 weeks %>% walk(do_derive_and_export_coverage_identification_features)
 
