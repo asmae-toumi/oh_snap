@@ -36,6 +36,8 @@ positions <- read_positions()
     ) %>% 
     # Add a temporary distance column to filter down to other player who is closest.
     mutate(dist = .dist(x, !!col_x_sym, y, !!col_y_sym)) %>% 
+    # If re-joining on defensive players, make sure not to choose the same player!
+    filter(dist > 0) %>% 
     group_by(game_id, play_id, frame_id, nfl_id) %>% 
     # Filter for just the player in `x2` who is closest to the player in `x1`.
     filter(dist == min(dist)) %>% 
@@ -50,10 +52,48 @@ events_pass_outcome <- c('pass_arrived', sprintf('pass_outcome_%s', c('caught', 
 
 # Big ass function to compute the features on week at a time.
 do_derive_and_export_coverage_identification_features <- function(week) {
-  # w <- 1
+
   tracking <-
     read_week(week) %>% 
     left_join(positions %>% select(position, side, position_category = category))
+  
+  # Typical pre-processing stuff. Don't really need to do all of this since we won't be using the ball, but whatever.
+  ball <- tracking %>% filter(display_name == 'Football')
+  
+  tracking <-
+    tracking %>%
+    filter(display_name != 'Football')
+  
+  tracking <-
+    tracking %>% 
+    inner_join(
+      ball %>% 
+        select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
+      by = c('frame_id', 'game_id', 'play_id')
+    )
+  
+  line_of_scrimmage <-
+    tracking %>%
+    filter(event == 'ball_snap') %>% 
+    group_by(game_id, play_id) %>%
+    filter(row_number() == 1L) %>% 
+    ungroup() %>% 
+    select(game_id, play_id, los = ball_x) %>%
+    ungroup()
+  
+  # Do some standardizing.
+  x_max <- 120
+  y_max <- 160 / 3
+  tracking <-
+    tracking %>%
+    left_join(line_of_scrimmage, by = c('game_id', 'play_id')) %>%
+    mutate(
+      across(c(x, ball_x, los), ~ if_else(play_direction == 'left', !!x_max - .x, .x)),
+      # Standardizing the x direction based on the los is best for doing general analysis,
+      # but perhaps not for plotting.
+      # across(c(x, ball_x), ~if_else(play_direction == 'left', .x - (!!x_max - los), .x - los)),
+      across(c(y, ball_y), ~ if_else(play_direction == 'left', !!y_max - .x, .x))
+    )
 
   # We only want plays with throws (no sacks).
   throw_ids <- 
@@ -75,7 +115,7 @@ do_derive_and_export_coverage_identification_features <- function(week) {
     clip_tracking_at_events(events = events_pass_outcome) %>% 
     # Don't need QB.
     filter(position != 'QB') %>% 
-    # Don't need to assing coverages for DLs, even though they may play some coverage on some plays.
+    # Don't need to assign coverages for DLs, even though they may play some coverage on some plays.
     filter(position_category != 'DL') %>% 
     select(game_id, play_id, frame_id, event, nfl_id, position, side, x, y, s, o, dir)
   tracking_clipped_at_pass_outcome
@@ -119,6 +159,7 @@ do_derive_and_export_coverage_identification_features <- function(week) {
       dist_od = .dist(x_o, x_d, y_o, y_d),
       dist_rat = dist_o / (dist_od),
       dir_o_diff = .angle_diff(dir, dir_o),
+      # Orientation difference with the offensive player. This isn't used in the paper since they didn't have an orientation varaible, but it recommends doing something like this in further analysis.
       o_o_diff = .angle_diff(o, o_o)
     )
   features_all_frames
@@ -151,11 +192,11 @@ do_derive_and_export_coverage_identification_features <- function(week) {
       off_mean = dist_o_mean,
       def_mean = dist_d_mean,
       off_dir_mean = dir_o_diff_mean,
-      off_o_mean = o_o_diff_mean,
+      off_o_mean = o_o_diff_mean, # New orientation feature.
       off_var = dist_o_var,
       def_var = dist_d_var,
       off_dir_var = dir_o_diff_var,
-      off_o_var = o_o_diff_var,
+      off_o_var = o_o_diff_var, # New orientation feature.
       rat_mean = dist_rat_mean,
       rat_var = dist_rat_var
     )
