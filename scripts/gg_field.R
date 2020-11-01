@@ -122,7 +122,7 @@ gg_field <- function(yardmin=0, yardmax=120, buffer=5, direction="horiz",
     coord_cartesian(xlim=c(yardmin, yardmax),ylim = c(ymin-buffer,ymax+buffer), expand = FALSE),
     
     if(direction=="vert"){
-      coord_flip(expand = FALSE)
+      coord_flip(xlim=c(yardmin, yardmax),ylim = c(ymin-buffer,ymax+buffer), expand = FALSE)
     }
   )
   
