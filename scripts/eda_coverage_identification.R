@@ -91,7 +91,7 @@ do_derive_and_export_coverage_identification_features <- function(week) {
       across(c(x, ball_x, los), ~ if_else(play_direction == 'left', !!x_max - .x, .x)),
       # Standardizing the x direction based on the los is best for doing general analysis,
       # but perhaps not for plotting.
-      # across(c(x, ball_x), ~if_else(play_direction == 'left', .x - (!!x_max - los), .x - los)),
+      across(c(x, ball_x), ~.x - los),
       across(c(y, ball_y), ~ if_else(play_direction == 'left', !!y_max - .x, .x))
     )
 
@@ -177,14 +177,18 @@ do_derive_and_export_coverage_identification_features <- function(week) {
     relocate(event)
   features_all_frames
 
-  # Aggreggate to the "important" frames, i.e. the snap, throw, and outcome.
+  # Aggregate to the "important" frames, i.e. the snap, throw, and outcome.
   features <-
     features_all_frames %>% 
     # Only keeping the 
     inner_join(frame_id_ranges %>% select(game_id, play_id, frame_id = frame_id_first)) %>% 
-    group_by(game_id, play_id, event, nfl_id) %>% 
+    group_by(game_id, play_id, event, nfl_id, position) %>% 
     summarize(
-      across(c(x, y, s, dist_o, dist_d, dist_rat, dir_o_diff, o_o_diff), list(mean = mean, var = var))
+      n = n(),
+      across(
+        c(x, y, s, dist_o, dist_d, dist_rat, dir_o_diff, o_o_diff), 
+        list(mean = mean, var = var)
+      )
     ) %>% 
     ungroup() %>% 
     # Rename columns to match up with paper's names.
@@ -199,8 +203,10 @@ do_derive_and_export_coverage_identification_features <- function(week) {
       off_o_var = o_o_diff_var, # New orientation feature.
       rat_mean = dist_rat_mean,
       rat_var = dist_rat_var
-    )
+    ) %>% 
+    drop_na()
   features
+  # plot_play(game_id = 2018091001, play_id = 604)
   
   features %>% write_csv(file.path('data', sprintf('coverage_identification_features_week%d.csv', week)))
 }
