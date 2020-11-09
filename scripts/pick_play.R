@@ -238,7 +238,7 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
 plot_pick_route_play <-
   function(game_id = 2018090600,
            play_id = 75,
-           tracking = read_week1(),
+           tracking = read_week(week = 1),
            positions = read_positions(),
            plays = read_plays(),
            games = read_games(),
@@ -644,30 +644,11 @@ plot_pick_route_play <-
       type = "cairo"
     )
   }
-# game_id = 2018090600
-# play_id = 776
-# tracking = read_week1()
-# positions = read_positions()
-# plays = read_plays()
-# games = read_games()
-# team_colors = FALSE
-# yardmin = NULL
-# yardmax = NULL
-# field_color = "#b3e3d6"
-# line_color = "black"
-# sideline_color = "white"
-# endzone_color = NULL
-# buffer = NULL
-# save = TRUE
-# dir = "figs"
-# filename = sprintf("%s-%s.png", game_id, play_id)
-# path = file.path(dir, filename)
-# width = 10
-# height = 12
+
 plot_play <-
   function(game_id = 2018090600,
            play_id = 75,
-           tracking = read_week1(),
+           tracking = read_week(week = 1),
            positions = read_positions(),
            plays = read_plays(),
            games = read_games(),
@@ -922,11 +903,12 @@ plot_play <-
     p <-
       p +
       ggplot2::theme(
-        plot.title = ggtext::element_markdown(),
+        plot.title = ggtext::element_markdown(size = 16),
         plot.title.position = 'plot',
         strip.background = ggplot2::element_rect(fill = NA),
         # strip.text = ggplot2::element_text()
         plot.caption = ggtext::element_markdown(
+          size = 16,
           hjust = 0, 
           lineheight = 0
         ),

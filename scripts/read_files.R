@@ -167,19 +167,20 @@ read_tracking <-
         across(c(x, ball_x, los), ~ if_else(play_direction == 'left', !!x_max - .x, .x)),
         # Standardizing the x direction based on the los is best for doing general analysis,
         # but perhaps not for plotting.
-        # across(c(x, ball_x), ~if_else(play_direction == 'left', .x - (!!x_max - los), .x - los)),
+        # across(c(x, ball_x), ~.x - los),
         across(c(y, ball_y), ~ if_else(play_direction == 'left', !!y_max - .x, .x))
       )
   }
 
 # Probably need to put this in some other file since it doesn't go perfectly with all these `read_*` functions.
 # When `group = 0`, it's pre-snap. When `group = 2`, it's `events`.
-clip_tracking_at_events <- function(tracking, events) {
+# An alternate `init_cnd` might be `quos(frame_id == 1)`. (You don't technically need to use `quos()` if it's just one condition; just `quo()` would suffice.) A base R alternative to the `quos()`-`!!!` combo would be `expr()`-`eval()`.
+clip_tracking_at_events <- function(tracking, events, init_cnd = quos(event == 'ball_snap')) {
   tracking %>% 
     group_by(game_id, play_id, nfl_id) %>%
     mutate(
       group = case_when(
-        event == 'ball_snap' ~ 1L,
+        !!!init_cnd ~ 1L,
         dplyr::lag(event) %in% !!events ~ 1L,
         TRUE ~ 0L
       ),
