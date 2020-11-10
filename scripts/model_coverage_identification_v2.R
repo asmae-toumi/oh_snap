@@ -34,14 +34,7 @@ features <-
   mutate(idx = row_number()) %>% 
   relocate(idx)
 features
-features %>% count(event)
-# plays_w_defender <-
-#   plays %>% 
-#   select(game_id, play_id, play_description) %>% 
-#   filter(play_description %>% str_detect('incomplete')) %>% 
-#   filter(play_description %>% str_detect('\\(.*\\)[.]$'))
 
-# library(reticulate)
 sklearn <- reticulate::import('sklearn')
 
 .valid_events <- c('postsnap-prethrow') # , 'postthrow-preoutcome')
@@ -69,16 +62,36 @@ generate_gmm_params_grid <- function() {
   mat[,setdiff(colnames(mat), cols), drop = FALSE]
 }
 
-.prepare_results <- function(clf, mat, ...) {
-  browser()
+.prepare_results <- function(clf, mat, ..., tol = 1e-3) {
+  # browser()
   mat_noidx <- mat %>% .unselect_mat(c('idx', 'week'))
   bic <- clf$bic(mat_noidx)
   preds <- clf$predict(mat_noidx)
-
+  
   mat_idx <- mat %>% .select_mat('idx') %>% as_tibble()
+  preds <- 
+    (preds + 1L) %>% 
+    tibble(cluster = .) %>% 
+    bind_cols(mat_idx)
+
   probs <- clf$predict_proba(mat_noidx)
   colnames(probs) <- sprintf('%d', 1:ncol(probs))
-  # browser()
+  
+  # NOTE: Can't directly assign column names to clf$means_, so need ot make a copy.
+  means <- clf$means_
+  colnames(means) <- colnames(mat_noidx)
+
+  means <-
+    means %>% 
+    as_tibble() %>%
+    rownames_to_column(var = 'cluster') %>% 
+    # pivot_longer(
+    #   -c(cluster),
+    #   names_to = 'feature',
+    #   values_to = 'mean'
+    # ) %>% 
+    mutate(across(cluster, as.integer))
+  
   probs <-
     probs %>% 
     as_tibble() %>%
@@ -88,42 +101,99 @@ generate_gmm_params_grid <- function() {
       names_to = 'cluster',
       values_to = 'prob'
     ) %>% 
-    mutate(across(cluster, as.integer))
-  res <- list(bic = bic, probs = probs, means = clf$means_)
+    mutate(
+      across(prob, ~case_when(.x > (1 - tol) ~ 1, .x < tol ~ 0, TRUE ~ .x)),
+      across(cluster, as.integer)
+    )
+  res <- list(bic = bic, probs = probs, preds = preds, means = means)
   res
 }
 
 .evaluate_split <- function(clf, split, ..., .week = 1L, verbose = TRUE) {
-  # trn <- split %>% rsample::analysis()
-  # tst <- split %>% rsample::assessment()
-  # browser()
   if(verbose) {
     cat(glue::glue('Fitting and predicting for week {.week} at {Sys.time()}.'), sep = '\n')
   }
+  # split <- folds %>% slice(1) %>% pull(split) %>% pluck(1)
   trn_mat <- split$trn %>% as.matrix()
   tst_mat <- split$tst %>% as.matrix()
-  clf$fit(trn_mat %>% .unselect_mat(c('idx', 'week')))
+  # clf_trn <- clf
+  # clf_tst <- clf
+  if(verbose) {
+    cat(glue::glue('Fitting training model (without {.week}) at {Sys.time()}.'), sep = '\n')
+  }
+  clf_trn$fit(trn_mat %>% .unselect_mat(c('idx', 'week')))
+  if(verbose) {
+    cat(glue::glue('Fitting testing model (with only {.week}) at {Sys.time()}.'), sep = '\n')
+  }
+  clf_tst$fit(tst_mat %>% .unselect_mat(c('idx', 'week')))
   
-  res <- 
-    map(
-      list('trn' = trn_mat, 'tst' = tst_mat), 
-      ~.prepare_results(clf = clf, mat = .x, ...)
+  res_trn <- .prepare_results(clf = clf_trn, mat = tst_mat)
+  res_tst <- .prepare_results(clf = clf_tst, mat = tst_mat)
+
+  .to_mat <- function(data) {
+    data %>% select(-matches('cluster')) %>% as.matrix()
+  }
+  # mat_sim <- text2vec::sim2(mat_x, mat_y)
+  # mat_sim %>% apply(MARGIN=2, max)
+  # cbind(t(mat_x), t(mat_y)) %>% cor()
+  dists <- pracma::distmat(.to_mat(res_trn$means), .to_mat(res_tst$means))
+  idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
+  # labs <- set_names(as.vector(idx_min), seq_along(idx_min))
+  labs <- tibble(cluster = seq_along(idx_min), cluster_reordered = as.vector(idx_min))
+  # labs <- 
+  #   set_names(seq_along(idx_min), as.vector(idx_min)) %>% 
+  #   enframe(name = 'cluster_reordered', value = 'cluster') %>% 
+  #   mutate(across(cluster_reordered, as.integer))
+  # labs
+
+  .fix_cluster_col <- function(data) {
+    data %>% 
+      # mutate(cluster_reordered = labs[cluster]) %>% 
+      # mutate(cluster_reordered = cluster %>% recode(labs))
+      left_join(labs, by = 'cluster') %>% 
+      select(-cluster) %>% 
+      rename(cluster = cluster_reordered) %>% 
+      relocate(cluster)
+  }
+  res_trn$means <- res_trn$means %>% .fix_cluster_col() %>% arrange(cluster)
+  res_trn$probs <- res_trn$probs %>% .fix_cluster_col()
+  res_trn$preds <- res_trn$preds %>% .fix_cluster_col()
+
+  .rename_cols <- function(data, suffix = c('trn', 'tst'), cols) {
+    data %>% rename_with(~sprintf('%s_%s', .x, suffix), .cols = any_of(cols))
+  }
+  
+  preds_joined <- 
+    inner_join(
+      res_trn$probs %>% .rename_cols('trn', 'prob'),
+      res_tst$probs %>% .rename_cols('tst', 'prob')
     )
-  res <- res %>% enframe(name = 'set', value = 'value') %>% unnest_wider(value)
+  
+  preds_joined <- 
+    inner_join(
+      res_trn$preds %>% .rename_cols('trn', c('pred', 'cluster')),
+      res_tst$preds %>% .rename_cols('tst', c('pred', 'cluster'))
+    )
+  preds_joined %>% filter(cluster_trn == cluster_tst)
+  # sklearn$metrics$adjusted_rand_score(preds_joined$cluster_trn, preds_joined$cluster_tst)
+
+  # res <- res %>% enframe(name = 'set', value = 'value') %>% unnest_wider(value)
+  res <- list('trn' = res_trn, 'tst' = res_tst)
   res
 }
 
 .fit_sklearn_gmm_cv <-
   function(data, clf, ..., verbose = TRUE) {
-
+    
     .make_split <- function(week) {
       trn <- data %>% filter(week != !!week) %>% select(-week)
       tst <- data %>% filter(week == !!week) %>% select(-week)
       list(trn = trn, tst = tst)
     }
     folds <-
-      .weeks %>% 
+      # .weeks %>% 
       # 1L:17L %>% 
+      1L %>% 
       tibble(fold = .) %>% 
       mutate(split = map(fold, .make_split))
     
@@ -153,15 +223,13 @@ generate_gmm_params_grid <- function() {
            n_components = 2L,
            ...,
            seed = 0L) {
-    # event = 'postsnap-prethrow'
-    # position_label = 'CB'
-    # covariance_type = 'full'
-    # n_components = 3L
-    # save_preds = FALSE
-    # save_probs = FALSE
-    # n_folds = 10L
-    # prop = 0.75
-    # seed = 0L
+    if(FALSE) {
+      event = 'postsnap-prethrow'
+      position_label = 'CB'
+      covariance_type = 'full'
+      n_components = 3L
+      seed = 0L
+    }
     event <- match.arg(event)
     position_label <- match.arg(position_label)
     covariance_type <- match.arg(covariance_type)
@@ -189,12 +257,20 @@ generate_gmm_params_grid <- function() {
         off_o_var
       )
     
-    clf <-
+    clf_trn <-
       sklearn$mixture$GaussianMixture(
         n_components = n_components, 
         covariance_type = covariance_type,
         random_state = seed
       )
+    
+    clf_tst <-
+      sklearn$mixture$GaussianMixture(
+        n_components = n_components, 
+        covariance_type = covariance_type,
+        random_state = seed
+      )
+
     res <-
       list(
         data = data,
@@ -210,7 +286,7 @@ fit_sklearn_gmm <-
            how = c('cv', 'none'),
            seed = 0L) {
     how <- match.arg(how)
-
+    
     res_prep <- .prepare_sklearn_gmm(seed = seed, ...)
     data <- res_prep$data
     clf <- res_prep$clf
@@ -227,105 +303,3 @@ fit_sklearn_gmm <-
 
 gmm_params_grid <- generate_gmm_params_grid()
 
-safely_fit_sklearn_gmm <- safely(fit_sklearn_gmm, quiet = FALSE)
-res_gmm_cv <-
-  gmm_params_grid %>% 
-  slice(1) %>% 
-  mutate(
-    res = 
-      pmap(
-        list(event, position_label, covariance_type, n_components), 
-        ~fit_sklearn_gmm(
-          features = features, 
-          event = ..1, 
-          position_label = ..2, 
-          covariance_type = ..3, 
-          n_components = ..4,
-          cv = TRUE
-        )
-      )
-  )
-res_gmm_cv
-
-# res_gmm_cv %>% 
-#   unnest(res) %>% 
-#   filter(set == 'trn') %>% 
-#   select(position_label, n_components, fold, means) %>% 
-#   unnest(means) %>% 
-#   rename_with(~sprintf('means_%d', .x))
-
-tic <- tictoc::tic()
-res_gmm_cv_agg_by_idx <-
-  res_gmm_cv %>% 
-  # unnest_wider(res) %>% 
-  # unnest(result) %>% 
-  unnest(res) %>% 
-  select(event, position_label, covariance_type, n_components, fold, set, probs) %>% 
-  # unnest(set) %>% 
-  unnest(probs) %>% 
-  group_by(event, position_label, covariance_type, n_components, set, idx, cluster) %>% 
-  summarize(
-    # n = n(), # This should be just `n_folds` - 1
-    across(prob, mean)
-  ) %>% 
-  # filter(prob == max(prob)) %>% 
-  slice_max(prob, with_ties = FALSE) %>% 
-  ungroup()
-res_gmm_cv_agg_by_idx
-toc <- tictoc::toc()
-save(res_gmm_cv_agg_by_idx, file = 'data/res_gmm_cv_agg_by_idx.rda')
-
-res_gmm_cv_agg_by_idx %>% 
-  filter(event == 'postsnap-prethrow', covariance_type == 'full') %>% 
-  select(position_label, n_components, idx, cluster, prob) %>% 
-  # mutate(across(n_components, ordered)) %>% 
-  ggplot() +
-  aes(x = prob) +
-  geom_histogram(binwidth = 0.05) +
-  facet_grid(n_components~position_label, scales = 'free_y')
-# toc <- tictoc::toc()
-
-set.seed(42L)
-res_gmm_cv_agg_by_idx %>% 
-  filter(event == 'postsnap-prethrow', covariance_type == 'full') %>% 
-  select(position_label, n_components, idx, cluster, prob) %>% 
-  mutate(across(c(n_components, cluster), ordered)) %>% 
-  sample_frac(0.01) %>% 
-  ggplot() +
-  aes(x = prob, y = cluster) +
-  geom_point(aes(color = cluster)) +
-  facet_grid(position_label~n_components, scales = 'free_y')
-
-.pull_for_ari <- function(data) {
-  data %>% 
-    select(idx, cluster) %>% 
-    arrange(idx) %>% 
-    pull(cluster)
-}
-
-compute_cv_ari <- function(data) {
-  # actuals <- data %>% filter(set == 'trn') %>% .pull_for_ari()
-  # preds <- data %>% filter(set == 'tst') %>% .pull_for_ari()
-  # browser()
-  res <-
-    inner_join(
-      data %>% filter(set == 'trn') %>% select(idx, actual = cluster),
-      data %>% filter(set == 'tst') %>% select(idx, pred = cluster)
-    )
-  actuals <- res %>% pull(actual)
-  preds <- res %>% pull(pred)
-  ari <- sklearn$metrics$adjusted_rand_score(labels_true = actuals, labels_pred = preds)
-  ari
-}
-
-gmm_cv_aris <-
-  res_gmm_cv_agg_by_idx %>% 
-  nest(data = -c(event, position_label, covariance_type, n_components)) %>% 
-  mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
-  select(-data)
-gmm_cv_aris
-gmm_cv_aris %>% 
-  group_by(event, position_label) %>% 
-  slice_max(ari) %>% 
-  ungroup() %>% 
-  select(-event, -covariance_type)
