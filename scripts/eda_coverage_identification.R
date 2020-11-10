@@ -6,12 +6,13 @@ games <- read_games()
 plays <- read_plays()
 positions <- read_positions()
 
-# Distance calculation
+# Distance calculation.
 .dist <- function(x1, x2, y1, y2) {
   sqrt((x2 - x1)^2 + (y2 - y1)^2)
 }
 
-# Angle difference calculation. (Not totally sure this is correct.)
+# Signed angle difference calculation.
+# Reference: https://stackoverflow.com/questions/1878907/the-smallest-difference-between-2-angles
 .angle_diff <- function(a1, a2) {
   diff <- a2 - a1
   (diff + 180) %% 360 - 180
@@ -46,13 +47,14 @@ positions <- read_positions()
     select(-dist)
 }
 
-events_throw <- c('pass_forward', 'pass_shovel')
-# Add `pass_arrived` and clip on the first of arrived or outcome.
-events_pass_outcome <- c('pass_arrived', sprintf('pass_outcome_%s', c('caught', 'incomplete', 'interception', 'touchdown')))
 
 # Big ass function to compute the features on week at a time.
 do_derive_and_export_coverage_identification_features <- function(week) {
-
+  
+  events_throw <- c('pass_forward', 'pass_shovel')
+  # Add `pass_arrived` and clip on the first of arrived or outcome.
+  events_pass_outcome <- c('pass_arrived', sprintf('pass_outcome_%s', c('caught', 'incomplete', 'interception', 'touchdown')))
+  
   tracking <-
     read_week(week) %>% 
     left_join(positions %>% select(position, side, position_category = category))
@@ -207,12 +209,18 @@ do_derive_and_export_coverage_identification_features <- function(week) {
     drop_na()
   features
   # plot_play(game_id = 2018091001, play_id = 604)
-  
+  bad_plays <-
+    features %>% 
+    count(game_id, play_id, nfl_id) %>% 
+    # Identify plays with only one event. Probably need to move this cleaning to prior script.
+    filter(n == 1L) %>% 
+    distinct(game_id, play_id)
+  features <- features %>% anti_join(bad_plays)
   features %>% write_csv(file.path('data', sprintf('coverage_identification_features_week%d.csv', week)))
 }
 
-# weeks <- 1:17
-weeks <- 1
+weeks <- 1:17
+# weeks <- 1
 # Call the function for each week, one at a time. (No need to save the results to a variable, hence `walk`.)
 weeks %>% walk(do_derive_and_export_coverage_identification_features)
 
