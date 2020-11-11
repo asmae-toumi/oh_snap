@@ -49,8 +49,8 @@ generate_gmm_params_grid <- function() {
       covariance_type = .valid_covariance_types,
       # covariance_type = c('full', 'diag'),
       # covariance_type = 'full',
-      n_components = rev(c(2L, 3L, 4L, 5L)) # , 8L)
-      # n_components = seq.int(2L, 9L)
+      # n_components = rev(c(2L, 3L, 4L, 5L)) # , 8L)
+      n_components = seq.int(2L, 9L)
     )
 }
 
@@ -282,7 +282,7 @@ fit_sklearn_gmm <-
 gmm_params_grid <- generate_gmm_params_grid()
 res_gmm_cv <-
   gmm_params_grid %>%
-  slice(1) %>%
+  # slice(1) %>%
   mutate(
     res =
       pmap(
@@ -299,20 +299,15 @@ res_gmm_cv <-
   )
 res_gmm_cv
 
-res_gmm_cv %>% 
-  unnest_wider(res) %>% 
-  slice(1) %>% 
-  unnest(cols = c(fold, set, bic, probs, preds, means)) %>% 
-  unnest(cols = c(set, bic, probs, preds, means))
-
-res_gmm_cv %>% 
-  unnest_wider(res) %>% 
-  select(event, position_label, covariance_type, n_components, fold, set, means) %>% 
-  unnest(cols = c(fold, set, means)) %>% 
-  unnest(cols = c(set, means)) %>% 
-  filter(set == 'tst', n_components == 2L) %>% 
-  unnest(means) %>% 
-  filter(off_dir_mean > 0)
+# # Comparing cluster means...
+# res_gmm_cv %>% 
+#   unnest_wider(res) %>% 
+#   select(event, position_label, covariance_type, n_components, fold, set, means) %>% 
+#   unnest(cols = c(fold, set, means)) %>% 
+#   unnest(cols = c(set, means)) %>% 
+#   filter(set == 'tst', n_components == 2L) %>% 
+#   unnest(means) %>% 
+#   filter(off_dir_mean > 0)
 
 res_gmm_cv_unnested <-
   res_gmm_cv %>% 
@@ -344,20 +339,22 @@ baseline_means
 }
 
 .get_new_cluster_order <- function(x, y) {
-  # x <- tst_fold1
-  # y <- tst_folds_other %>% slice(1)
-  # cat(glue::glue('Running at {Sys.time()}'), sep = '\n')
   dists <- pracma::distmat(.to_mat(x), .to_mat(y))
   idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
-  res <- tibble(cluster = seq_along(idx_min), cluster_reordered = as.vector(idx_min))
-  # y$means[[1]] <- y$means[[1]] %>% .fix_cluster_col() %>% arrange(cluster)
-  # y$probs[[1]] <- y$probs[[1]] %>% .fix_cluster_col()
-  # y$preds[[1]] <- y$preds[[1]] %>% .fix_cluster_col()
-  # list(x, y)
-  res
+  tibble(
+    cluster = seq_along(idx_min), 
+    cluster_reordered = as.vector(idx_min)
+  )
 }
 
-res_gmm_cv_reordered <-
+# res_gmm_cv_unnested %>% 
+#   left_join(baseline_means) %>% 
+#   filter(n_components == 3, fold != 1, set == 'tst') %>% 
+#   mutate(
+#     clusters_reordered = map2(means,baseline_means, .get_new_cluster_order)
+#   )
+
+res_gmm_cv_unnested_reordered <-
   res_gmm_cv_unnested %>% 
   left_join(baseline_means) %>% 
   mutate(
@@ -366,29 +363,107 @@ res_gmm_cv_reordered <-
     probs = map2(probs, clusters_reordered, .fix_cluster_col),
     preds = map2(preds, clusters_reordered, .fix_cluster_col)
   )
-res_gmm_cv_reordered
+res_gmm_cv_unnested_reordered
+
+# res_gmm_cv_unnested_reordered %>% 
+#   select(event, position_label, covariance_type, n_components, fold, set, clusters_reordered) %>% 
+#   slice_max(fold) %>% 
+#   unnest(clusters_reordered) %>% 
+#   tail(9)
+# 
+# res_gmm_cv_unnested_reordered %>% 
+#   filter(n_components == 3L, fold <= 6L, set == 'tst') %>% 
+#   select(clusters_reordered, means, baseline_means) %>% 
+#   mutate(
+#     clusters_reordered = map(clusters_reordered, ~rename_all(.x, ~sprintf('%s_0', .x))),
+#     means = map(means, ~rename_all(.x, ~sprintf('%s_1', .x))),
+#     baseline_means = map(baseline_means, ~rename_all(.x, ~sprintf('%s_2', .x)))
+#   ) %>% 
+#   unnest(cols = c(clusters_reordered, means, baseline_means)) %>% 
+#   mutate(idx = row_number()) %>% 
+#   pivot_longer(-c(idx)) %>% 
+#   arrange(name) %>% 
+#   pivot_wider(names_from = name, values_from = value) -> x
+# x %>% 
+#   pivot_longer(-idx) %>% 
+#   mutate(
+#     grp = name %>% str_replace_all('(^.*_)([0-2]$)', '\\2') %>% as.factor(),
+#     name = name %>% str_replace_all('(^.*)(_[0-2]$)', '\\1'),
+#     idx = ordered(idx)
+#   ) %>% 
+#   ggplot() +
+#   aes(x = idx, y = value) +
+#   geom_point(aes(color = grp)) +
+#   facet_wrap(~name, scales = 'free')
 
 # res_gmm_cv_unnested %>% 
 #   select(event, position_label, covariance_type, n_components, fold, set, means) %>% 
 #   unnest(means)
-# res_gmm_cv_reordered %>% 
+# res_gmm_cv_unnested_reordered %>% 
 #   select(event, position_label, covariance_type, n_components, fold, set, means) %>% 
 #   unnest(means)
 
+.identify_max_prob <- function(data, idx_grp = 1, idx_grp_max = Inf) {
+  cat(glue::glue('Working on group {idx_grp} of {idx_grp_max} at {Sys.time()}.'), sep = '\n')
+  # browser()
+  data %>% 
+    group_by(idx, cluster) %>% 
+    summarize(
+      n_fold = n(), # This should be just `n_folds` - 1
+      across(prob, mean)
+    ) %>% 
+    # filter(prob == max(prob)) %>% 
+    slice_max(prob, with_ties = FALSE) %>% 
+    ungroup()
+}
+
+res_gmm_cv_unnested_reordered %>% 
+  mutate(n_row = map_int(probs, nrow)) %>% 
+  group_by(set) %>% 
+  summarize(across(n_row, sum)) %>% 
+  ungroup()
+
+# library(data.table)
+# res_gmm_cv_agg_by_idx_sample <-
+#   res_gmm_cv_unnested_reordered %>% 
+#   head(20) %>% 
+#   select(event, position_label, covariance_type, n_components, fold, set, probs) %>% 
+#   mutate(across(probs, ~map(.x, data.table::as.data.table))) %>% 
+#   data.table::as.data.table() %>% 
+#   .[,`:=`(probs = map(probs, .identify_max_prob))]
+# res_gmm_cv_agg_by_idx_sample
+
+res_gmm_cv_unnested_reordered %>% 
+  head(20) %>% 
+  mutate(n_row = map_int(probs, nrow)) %>% 
+  summarize(across(n_row, sum))
 
 res_gmm_cv_agg_by_idx <-
-  res_gmm_cv_reordered %>% 
-  select(event, position_label, covariance_type, n_components, fold, set, probs) %>% 
+  res_gmm_cv_unnested_reordered %>% 
+  # head(20) %>% 
+  select(event, position_label, covariance_type, n_components, set, probs) %>% 
   unnest(probs) %>% 
-  group_by(event, position_label, covariance_type, n_components, set, idx, cluster) %>% 
-  summarize(
-    # n = n(), # This should be just `n_folds` - 1
-    across(prob, mean)
+  # group_by(event, position_label, covariance_type, n_components, set, idx, cluster) %>% 
+  # summarize(
+  #   # n_fold = n(), # This should be just `n_folds` - 1
+  #   across(prob, mean)
+  # ) %>% 
+  # # filter(prob == max(prob)) %>% 
+  # slice_max(prob, with_ties = FALSE) %>% 
+  # ungroup()
+  nest(probs = c(idx, cluster, prob)) %>% 
+  mutate(idx_grp = row_number(), idx_grp_max = max(idx_grp)) %>% 
+  mutate(
+    probs = pmap(list(probs, idx_grp, idx_grp_max), .identify_max_prob)
   ) %>% 
-  # filter(prob == max(prob)) %>% 
-  slice_max(prob, with_ties = FALSE) %>% 
-  ungroup()
-res_gmm_cv_agg_by_idx
+  unnest(probs)
+res_gmm_cv_agg_by_idx %>% count(idx)
+res_gmm_cv_agg_by_idx %>% count(idx, cluster) %>% count(n, name = 'nn')
+res_gmm_cv_agg_by_idx %>% filter(idx == 6L)
+# res_gmm_cv_agg_by_idx <-
+#   res_gmm_cv_unnested_reordered %>% 
+#   data.table::as.data.table() %>%
+#   .[,.(max_mpg = max(mpg)), keyby = .(event, position_label, covariance_type, n_components, fold, set, probs)]
 
 res_gmm_cv_agg_by_idx %>% 
   select(-prob) %>% 
@@ -397,9 +472,69 @@ res_gmm_cv_agg_by_idx %>%
 
 gmm_cv_aris <-
   res_gmm_cv_agg_by_idx %>% 
-  select(-prob) %>% 
+  select(-matches('idx_')) %>% 
+  # filter(set == 'tst') %>% 
+  select(event, position_label, covariance_type, n_components, set, idx, cluster) %>% 
   pivot_wider(names_from = set, values_from = cluster) %>% 
   nest(data = -c(event, position_label, covariance_type, n_components)) %>% 
   mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
   select(-data)
 gmm_cv_aris
+
+.identify_best_tst_reordering <- function(data) {
+  browser()
+  mat <-
+    # hypo_best_init %>% 
+    data %>% 
+    # mutate(tst = trn) %>% 
+    count(trn, tst, sort = TRUE) %>%
+    arrange(tst) %>% 
+    pivot_wider(names_from = tst, values_from = n, values_fill = 0L) %>% 
+    arrange(trn) %>% 
+    select(-trn) %>% 
+    set_names(NULL) %>% 
+    as.matrix()
+  idx_min <- mat %>% clue::solve_LSAP(maximum = TRUE)
+  tibble(
+    tst = seq_along(idx_min), 
+    tst_reordered = as.vector(idx_min)
+  )
+}
+
+.fix_tst_col <- function(data, clusters_reordered) {
+
+  res <-
+    data %>%
+    left_join(clusters_reordered, by = 'tst') %>%
+    select(-tst) %>%
+    rename(tst = tst_reordered)
+  res
+  browser()
+  anti_join(res, data)
+  res
+  # data %>% mutate(tst = trn)
+}
+
+hypo_best_init <-
+  res_gmm_cv_agg_by_idx %>% 
+  select(-matches('idx_')) %>% 
+  # filter(set == 'tst') %>% 
+  filter(n_components == 9L) %>% 
+  select(event, position_label, covariance_type, n_components, set, idx, cluster) %>% 
+  pivot_wider(names_from = set, values_from = cluster) %>% 
+  nest(data = -c(event, position_label, covariance_type, n_components)) %>% 
+  mutate(
+    tst_reordered = map(data, .identify_best_tst_reordering)
+  ) %>% 
+  mutate(
+    data = map2(data, tst_reordered, .fix_tst_col)
+  )
+hypo_best_init
+
+gmm_cv_aris_best <-
+  hypo_best_init %>% 
+  select(event, position_label, covariance_type, n_components, data) %>% 
+  mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
+  select(-data)
+gmm_cv_aris_best
+
