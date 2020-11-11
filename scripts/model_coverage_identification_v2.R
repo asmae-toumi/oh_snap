@@ -54,6 +54,10 @@ generate_gmm_params_grid <- function() {
     )
 }
 
+compute_cv_ari <- function(data) {
+  sklearn$metrics$adjusted_rand_score(labels_true = as.integer(data$trn), labels_pred = as.integer(data$tst))
+}
+
 .select_mat <- function(mat, cols) {
   mat[,cols, drop = FALSE]
 }
@@ -66,9 +70,20 @@ generate_gmm_params_grid <- function() {
   # browser()
   mat_noidx <- mat %>% .unselect_mat(c('idx', 'week'))
   bic <- clf$bic(mat_noidx)
-  preds <- clf$predict(mat_noidx)
   
   mat_idx <- mat %>% .select_mat('idx') %>% as_tibble()
+  
+  # NOTE: Can't directly assign column names to clf$means_, so need to make a copy.
+  means <- clf$means_
+  colnames(means) <- colnames(mat_noidx)
+  
+  means <-
+    means %>% 
+    as_tibble() %>%
+    rownames_to_column(var = 'cluster') %>% 
+    mutate(across(cluster, as.integer))
+  
+  preds <- clf$predict(mat_noidx)
   preds <- 
     (preds + 1L) %>% 
     tibble(cluster = .) %>% 
@@ -76,22 +91,7 @@ generate_gmm_params_grid <- function() {
 
   probs <- clf$predict_proba(mat_noidx)
   colnames(probs) <- sprintf('%d', 1:ncol(probs))
-  
-  # NOTE: Can't directly assign column names to clf$means_, so need ot make a copy.
-  means <- clf$means_
-  colnames(means) <- colnames(mat_noidx)
 
-  means <-
-    means %>% 
-    as_tibble() %>%
-    rownames_to_column(var = 'cluster') %>% 
-    # pivot_longer(
-    #   -c(cluster),
-    #   names_to = 'feature',
-    #   values_to = 'mean'
-    # ) %>% 
-    mutate(across(cluster, as.integer))
-  
   probs <-
     probs %>% 
     as_tibble() %>%
@@ -109,22 +109,24 @@ generate_gmm_params_grid <- function() {
   res
 }
 
-.evaluate_split <- function(clf, split, ..., .week = 1L, verbose = TRUE) {
-  if(verbose) {
-    cat(glue::glue('Fitting and predicting for week {.week} at {Sys.time()}.'), sep = '\n')
-  }
-  # split <- folds %>% slice(1) %>% pull(split) %>% pluck(1)
-  trn_mat <- split$trn %>% as.matrix()
-  tst_mat <- split$tst %>% as.matrix()
+.evaluate_split <- function(clf_trn, clf_tst, split, ..., verbose = TRUE) {
+  # if(verbose) {
+  #   cat(glue::glue('Fitting and predicting for week {w} at {Sys.time()}.'), sep = '\n')
+  # }
+  trn_mat <- split %>% rsample::analysis() %>% as.matrix()
+  tst_mat <- split %>% rsample::assessment() %>% as.matrix()
+  # trn_mat <- split$trn %>% as.matrix()
+  # tst_mat <- split$tst %>% as.matrix()
+  # Doesn't work due to python copying semantics (the same fit is made).
   # clf_trn <- clf
   # clf_tst <- clf
-  if(verbose) {
-    cat(glue::glue('Fitting training model (without {.week}) at {Sys.time()}.'), sep = '\n')
-  }
+  # if(verbose) {
+  #   cat(glue::glue('Fitting training model (without {w}) at {Sys.time()}.'), sep = '\n')
+  # }
   clf_trn$fit(trn_mat %>% .unselect_mat(c('idx', 'week')))
-  if(verbose) {
-    cat(glue::glue('Fitting testing model (with only {.week}) at {Sys.time()}.'), sep = '\n')
-  }
+  # if(verbose) {
+  #   cat(glue::glue('Fitting testing model (with only {w}) at {Sys.time()}.'), sep = '\n')
+  # }
   clf_tst$fit(tst_mat %>% .unselect_mat(c('idx', 'week')))
   
   res_trn <- .prepare_results(clf = clf_trn, mat = tst_mat)
@@ -133,23 +135,13 @@ generate_gmm_params_grid <- function() {
   .to_mat <- function(data) {
     data %>% select(-matches('cluster')) %>% as.matrix()
   }
-  # mat_sim <- text2vec::sim2(mat_x, mat_y)
-  # mat_sim %>% apply(MARGIN=2, max)
-  # cbind(t(mat_x), t(mat_y)) %>% cor()
+
   dists <- pracma::distmat(.to_mat(res_trn$means), .to_mat(res_tst$means))
   idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
-  # labs <- set_names(as.vector(idx_min), seq_along(idx_min))
   labs <- tibble(cluster = seq_along(idx_min), cluster_reordered = as.vector(idx_min))
-  # labs <- 
-  #   set_names(seq_along(idx_min), as.vector(idx_min)) %>% 
-  #   enframe(name = 'cluster_reordered', value = 'cluster') %>% 
-  #   mutate(across(cluster_reordered, as.integer))
-  # labs
 
   .fix_cluster_col <- function(data) {
     data %>% 
-      # mutate(cluster_reordered = labs[cluster]) %>% 
-      # mutate(cluster_reordered = cluster %>% recode(labs))
       left_join(labs, by = 'cluster') %>% 
       select(-cluster) %>% 
       rename(cluster = cluster_reordered) %>% 
@@ -166,54 +158,78 @@ generate_gmm_params_grid <- function() {
   preds_joined <- 
     inner_join(
       res_trn$probs %>% .rename_cols('trn', 'prob'),
-      res_tst$probs %>% .rename_cols('tst', 'prob')
+      res_tst$probs %>% .rename_cols('tst', 'prob'),
+      by = c('cluster', 'idx')
     )
   
   preds_joined <- 
     inner_join(
       res_trn$preds %>% .rename_cols('trn', c('pred', 'cluster')),
-      res_tst$preds %>% .rename_cols('tst', c('pred', 'cluster'))
+      res_tst$preds %>% .rename_cols('tst', c('pred', 'cluster')),
+      by = 'idx'
     )
   preds_joined %>% filter(cluster_trn == cluster_tst)
   # sklearn$metrics$adjusted_rand_score(preds_joined$cluster_trn, preds_joined$cluster_tst)
-
-  # res <- res %>% enframe(name = 'set', value = 'value') %>% unnest_wider(value)
   res <- list('trn' = res_trn, 'tst' = res_tst)
   res
 }
 
 .fit_sklearn_gmm_cv <-
-  function(data, clf, ..., verbose = TRUE) {
+  function(data, clf_trn, clf_tst, ..., weeks = .weeks, verbose = TRUE) {
     
-    .make_split <- function(week) {
-      trn <- data %>% filter(week != !!week) %>% select(-week)
-      tst <- data %>% filter(week == !!week) %>% select(-week)
-      list(trn = trn, tst = tst)
-    }
-    folds <-
-      # .weeks %>% 
-      # 1L:17L %>% 
-      1L %>% 
-      tibble(fold = .) %>% 
-      mutate(split = map(fold, .make_split))
-    
-    # if(verbose) {
-    #   cat(glue::glue('Fitting and predicting for week {.week} at {Sys.time()}.'), sep = '\n')
+    # .make_split <- function(week) {
+    #   trn <- data %>% filter(week != !!week) %>% select(-week)
+    #   tst <- data %>% filter(week == !!week) %>% select(-week)
+    #   list(trn = trn, tst = tst)
     # }
-    # browser()  
+    # folds <-
+    #   weeks %>% 
+    #   # 1L %>% 
+    #   tibble(fold = .) %>% 
+    #   mutate(split = map(fold, .make_split))
+    
+    folds <- 
+      rsample::vfold_cv(data, v = 10) %>% 
+      mutate(across(id, ~str_remove(.x, 'Fold') %>% as.integer())) %>% 
+      rename(fold = id, split = splits)
+  
     res <-
       folds %>% 
       mutate(
         res = 
           map2(
             split, fold, 
-            ~.evaluate_split(clf = clf, split = ..1, ..., .week = ..2, verbose = verbose)
+            ~.evaluate_split(clf_trn = clf_trn, clf_tst = clf_tst, split = ..1, ..., verbose = verbose)
           )
-      ) %>% 
+      )
+    # browser()
+    res <-
+      res %>% 
       select(-split) %>% 
-      unnest(res)
+      unnest_longer(res, indices_to = 'set') %>% 
+      unnest_wider(res)
     res
   }
+
+get_feature_cols <- function() {
+  c(
+    'x_mean',
+    'x_var',
+    'y_mean',
+    'y_var',
+    's_mean',
+    's_var',
+    'off_mean',
+    'off_var',
+    'def_mean',
+    'rat_mean',
+    'rat_var',
+    'off_dir_mean',
+    'off_dir_var' # ,
+    # 'off_o_mean',
+    # 'off_o_var'
+  )
+}
 
 .prepare_sklearn_gmm <-
   function(features,
@@ -221,41 +237,34 @@ generate_gmm_params_grid <- function() {
            position_label = .valid_position_labels,
            covariance_type = .valid_covariance_types,
            n_components = 2L,
+           features_to_exclude = NULL, 
            ...,
-           seed = 0L) {
+           seed = 0L,
+           verbose = TRUE,
+           msg = NULL) {
     if(FALSE) {
       event = 'postsnap-prethrow'
       position_label = 'CB'
       covariance_type = 'full'
       n_components = 3L
+
       seed = 0L
     }
     event <- match.arg(event)
     position_label <- match.arg(position_label)
     covariance_type <- match.arg(covariance_type)
-    
+    # browser()
+    if(verbose) {
+      cat(glue::glue('Evaluating `event = "{event}"`, `position_label = "{position_label}"`, `covariance_type = "{covariance_type}"`, `n_components = {n_components}`.{msg}'), sep = '\n')
+    }
+    feature_cols_init <- get_feature_cols()
+    feature_cols <- setdiff(feature_cols_init, features_to_exclude)
+    # browser()
+    extra_cols <- c('idx', 'week')
     data <-
       features %>%
       filter(event == !!event & position_label == !!position_label) %>% 
-      select(
-        idx,
-        week,
-        x_mean,
-        x_var,
-        y_mean,
-        y_var,
-        s_mean,
-        s_var,
-        off_mean,
-        off_var,
-        def_mean,
-        rat_mean,
-        rat_var,
-        off_dir_mean,
-        off_dir_var,
-        off_o_mean,
-        off_o_var
-      )
+      select(one_of(c(extra_cols, feature_cols)))
     
     clf_trn <-
       sklearn$mixture$GaussianMixture(
@@ -274,7 +283,8 @@ generate_gmm_params_grid <- function() {
     res <-
       list(
         data = data,
-        clf = clf
+        clf_trn = clf_trn,
+        clf_tst = clf_tst
       )
     res
   }
@@ -284,22 +294,122 @@ fit_sklearn_gmm <-
            # Use 'none' after choosing "best" parameters given CV evaluation.
            # Output format is slightly different for 'cv' compared to the other two `how`s, which I should fix.
            how = c('cv', 'none'),
-           seed = 0L) {
+           seed = 0L,
+           verbose = TRUE) {
     how <- match.arg(how)
     
-    res_prep <- .prepare_sklearn_gmm(seed = seed, ...)
-    data <- res_prep$data
-    clf <- res_prep$clf
-    # split <- rsample::initial_split(data, prop = prop)
+    res_prep <- .prepare_sklearn_gmm(seed = seed, verbose = verbose, ...)
     if(how == 'cv') {
-      res <- .fit_sklearn_gmm_cv(clf = clf, data = data, ...)
+      # browser()
+      res <- .fit_sklearn_gmm_cv(clf_trn = res_prep$clf_trn, clf_tst = res_prep$clf_tst, data = res_prep$data, verbose = verbose, ...)
     } else {
-      mat <- data %>% as.matrix()
-      clf$fit(mat %>% .unselect_mat('idx'))
-      res <- .prepare_results(clf = clf, mat = mat, ...)
+      # TODO: Test this at some point.
+      mat <- res_prep$data %>% as.matrix()
+      res_prep$clf_trn$fit(mat %>% .unselect_mat(c('idx', 'week')))
+      res <- .prepare_results(clf = res_prep$clf_trn, mat = mat, ...)
     }
     res
   }
 
-gmm_params_grid <- generate_gmm_params_grid()
+feature_cols <- get_feature_cols()
+res_gmm_cv_vi <-
+  feature_cols %>% 
+  tibble(excluded_feature = .) %>% 
+  add_row(excluded_feature = NULL) %>% 
+  mutate(
+    res = 
+      pmap(
+        list(excluded_feature),
+        ~fit_sklearn_gmm(
+          features = features,
+          event = 'postsnap-prethrow',
+          position_label = 'CB',
+          covariance_type = 'full',
+          n_components = 4L,
+          how = 'cv',
+          msg = glue::glue(' Feature: `{..1}`.'),
+          features_to_exclude = ..1
+        )
+      )
+  )
+res_gmm_cv_vi
 
+gmm_params_grid <- generate_gmm_params_grid()
+res_gmm_cv <-
+  gmm_params_grid %>%
+  # slice(1) %>%
+  mutate(
+    res =
+      pmap(
+        list(event, position_label, covariance_type, n_components),
+        ~fit_sklearn_gmm(
+          features = features,
+          event = ..1,
+          position_label = ..2,
+          covariance_type = ..3,
+          n_components = ..4,
+          how = 'cv'
+        )
+      )
+  )
+res_gmm_cv
+# 
+# res_gmm_cv_vi %>% 
+#   unnest_wider(res) %>% 
+#   select(excluded_feature, preds) %>% 
+#   # unnest(set) %>% 
+#   unnest(preds) %>% 
+#   pivot_wider(names_from = set, values_from = cluster)
+
+res_gmm_cv_vi_agg_by_idx <-
+  res_gmm_cv_vi %>% 
+  unnest(res) %>% 
+  select(excluded_feature, set, preds) %>% 
+  # unnest(set) %>% 
+  unnest(preds) %>% 
+  pivot_wider(names_from = set, values_from = cluster)
+res_gmm_cv_vi_agg_by_idx
+
+gmm_cv_vi_aris <-
+  res_gmm_cv_vi_agg_by_idx %>% 
+  nest(data = -c(excluded_feature)) %>% 
+  mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
+  select(-data) %>% 
+  arrange(desc(ari))
+gmm_cv_vi_aris
+
+res_gmm_cv_agg_by_idx <- read_rds('data/res_gmm_cv_agg_by_idx_v2.rds')
+res_gmm_cv_agg_by_idx
+
+res_gmm_cv_agg_by_idx <-
+  res_gmm_cv %>% 
+  unnest(res) %>% 
+  select(event, position_label, covariance_type, n_components, fold, set, preds) %>% 
+  # unnest(set) %>% 
+  unnest(preds) %>% 
+  pivot_wider(names_from = set, values_from = cluster)
+res_gmm_cv_agg_by_idx
+# save(res_gmm_cv_agg_by_idx, file = 'data/res_gmm_cv_agg_by_idx_v2.rda')
+write_rds(res_gmm_cv_agg_by_idx, 'data/res_gmm_cv_agg_by_idx_v2.rds')
+
+# res_gmm_cv_agg_by_idx %>% 
+#   filter(n_components == 2L) %>% 
+#   filter(position_label == 'S') %>% 
+#   # count(is_same = trn == tst)
+#   # rename(z = trn) %>% 
+#   # rename(trn = tst) %>% 
+#   # rename(tst = z) %>% 
+#   # mutate(across(tst, ~if_else(.x == 2, 3, 2))) %>% 
+#   # mutate(tst = 1) %>% 
+#   # count(trn, tst)
+#   mutate(across(tst, ~case_when(trn == 2 ~ 2, TRUE ~ .x))) %>% 
+#   nest(data = -c(event, position_label, covariance_type, n_components)) %>% 
+#   mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
+#   select(-data)
+
+gmm_cv_aris <-
+  res_gmm_cv_agg_by_idx %>% 
+  nest(data = -c(event, position_label, covariance_type, n_components)) %>% 
+  mutate(ari = map_dbl(data, compute_cv_ari)) %>% 
+  select(-data)
+gmm_cv_aris
