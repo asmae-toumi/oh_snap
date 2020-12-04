@@ -113,6 +113,13 @@ dist_to_closest_def <- min_dist %>%
   group_by(game_id, play_id) %>% 
   summarise(dist_def1 = mean(dist_def1), dist_def2 = mean(dist_def2))
 
+dist_to_closest_def <- min_dist %>% 
+  filter(is_target==1, event == 'pass_arrived') %>% 
+  select(game_id, play_id, dist_def1 = dist_d1_naive, dist_def2 = dist_d2_naive) %>% 
+  ## average over duplicates
+  group_by(game_id, play_id) %>% 
+  summarise(dist_def1 = mean(dist_def1), dist_def2 = mean(dist_def2))
+
 
 df_cp <- left_join(df_cp, dist_to_closest_def)
 #df_cp <- left_join(df_cp, dist_to_second_closest_def)
