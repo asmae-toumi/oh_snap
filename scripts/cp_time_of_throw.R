@@ -78,7 +78,6 @@ df_cp_throw <- left_join(df_cp_throw, targeted)
 # merge nflfastR with BDB data
 df_cp_throw <- left_join(df_cp_throw, pbp18_cp)
 
-
 ## define pass events
 throw_events <- c("pass_forward","pass_shovel")
 

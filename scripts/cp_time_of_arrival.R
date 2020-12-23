@@ -49,7 +49,6 @@ all_merged <- all_weeks
 all_merged <- all_merged %>% inner_join(plays)
 all_merged <- all_merged %>% inner_join(targeted)
 
-
 ## read in tony's closest defender data 
 min_dist <- read_parquet('data/min_dists_features.parquet') %>% 
   clean_names()
