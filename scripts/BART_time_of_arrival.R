@@ -20,22 +20,22 @@ df_cp_arrival <- df_cp_arrival_filt %>%
       pass_result == "I" ~ 1),
     possession_team = as.factor(possession_team),
     target_height = as.numeric(target_height), 
-    qb_hit = as.factor(qb_hit)
+    qb_hit = as.factor(qb_hit),
+    roof = as.factor(roof)
     ) %>% 
   drop_na()
 
 # splitting into training and test set 
-set.seed(1353)
-df_split <- initial_split(df_cp_arrival)
-train_data <- training(df_split)
-test_data <- testing(df_split)
+# set.seed(1353)
+# df_split <- initial_split(df_cp_arrival)
+# train_data <- training(df_split)
+# test_data <- testing(df_split)
 
 # prepping data for BART
-drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp",
-               "roof")
+drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp")
 
-y <- train_data$pass_result
-x <- train_data[,!colnames(train_data) %in% drop_cols]
+y <- df_cp_arrival$pass_result
+x <- df_cp_arrival[,!colnames(df_cp_arrival) %in% drop_cols]
 
 # BART
 bart_fit1 <- pbart(x.train = x, 
@@ -73,9 +73,9 @@ prob_train <- rbind(prob_train1, prob_train2)
 
 prob_means <- apply(prob_train, mean, MAR=2)
 
-trained_plus_phat <- cbind(train_data, prob_means)
+trained_plus_phat <- cbind(df_cp_arrival, prob_means)
 
 save(trained_plus_phat, file = "data/BART_time_of_arrival/trained_plus_phat_time_of_arrival.RData")
-
+# probabilities are the "prob_means" variable 
 
 

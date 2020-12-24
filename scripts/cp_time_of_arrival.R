@@ -189,3 +189,10 @@ df_cp_arrival_filt %>%
   ## still ~2200 rows with missing data, mostly missing arrival tags
   drop_na()
 
+# adding weather
+
+weather <- read_csv("data/weather/weather_2018.csv")
+
+df_cp_arrival_filt <- df_cp_arrival_filt %>% 
+  left_join(weather, by = "game_id")
+

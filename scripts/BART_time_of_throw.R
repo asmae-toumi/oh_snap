@@ -3,7 +3,6 @@ source("scripts/cp_time_of_throw.R")
 
 library(skimr)
 library(BART)
-library(tidymodels)
 
 str(df_cp_throw_filt)
 
@@ -19,21 +18,15 @@ df_cp_throw <- df_cp_throw_filt %>%
       pass_result == "C" ~ 0, 
       pass_result == "I" ~ 1),
     possession_team = as.factor(possession_team),
-    target_height = as.numeric(target_height)) %>% 
+    target_height = as.numeric(target_height), 
+    roof = as.factor(roof)) %>% 
   drop_na()
 
-# splitting into training and test set 
-set.seed(1353)
-df_split <- initial_split(df_cp_throw)
-train_data <- training(df_split)
-test_data <- testing(df_split)
-
 # prepping data for BART
-drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp",
-               "roof")
+drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp")
 
-y <- train_data$pass_result
-x <- train_data[,!colnames(train_data) %in% drop_cols]
+y <- df_cp_throw$pass_result
+x <- df_cp_throw[,!colnames(df_cp_throw) %in% drop_cols]
 
 # BART
 bart_fit1 <- pbart(x.train = x, 
@@ -44,7 +37,7 @@ bart_fit1 <- pbart(x.train = x,
                    keepevery = 5, 
                    printevery = 500)
 
-save(bart_fit1, file = "data/bart_fit1.RData")
+saveRDS(bart_fit1, file = "data/BART_time_of_throw/bart_fit1.RDS")
 
 
 bart_fit2 <- pbart(x.train = x, 
@@ -55,14 +48,14 @@ bart_fit2 <- pbart(x.train = x,
                     keepevery = 5, 
                     printevery = 500)
 
-save(bart_fit2, file = "data/bart_fit2.RData")
+saveRDS(bart_fit2, file = "data/BART_time_of_throw/bart_fit2.RDS")
 
 # assess the convergence 
 library(coda)
 rhat <- gelman.diag(mcmc.list(mcmc(bart_fit1$prob.train), mcmc(bart_fit2$prob.train)), multivariate = FALSE)
 ess <- effectiveSize(mcmc.list(mcmc(bart_fit1$prob.train), mcmc(bart_fit2$prob.train)))
 
-save(rhat, ess, file = "data/bart_fit_diags.RData")
+save(rhat, ess, file = "data/BART_time_of_throw/bart_fit_diags.RData")
 
 # Posterior means of probability 
 
@@ -72,10 +65,9 @@ prob_train <- rbind(prob_train1, prob_train2)
 
 prob_means <- apply(prob_train, mean, MAR=2)
 
-trained_plus_phat <- cbind(train_data, prob_means)
+trained_plus_phat <- cbind(df_cp_throw, prob_means)
 
-save(trained_plus_phat, file = "data/trained_plus_phat_time_of_throw.RData")
-
-
+save(trained_plus_phat, file = "data/BART_time_of_throw/trained_plus_phat_time_of_throw.RData")
+# probabilities are the "prob_means" variable 
 
 

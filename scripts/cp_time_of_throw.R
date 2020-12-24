@@ -191,3 +191,8 @@ df_cp_throw_filt %>%
   ## still ~120 rows with missing data ¯\_(ツ)_/¯
   drop_na()
 
+weather <- read_csv("data/weather/weather_2018.csv")
+
+df_cp_throw_filt <- df_cp_throw_filt %>% 
+  left_join(weather, by = "game_id")
+
