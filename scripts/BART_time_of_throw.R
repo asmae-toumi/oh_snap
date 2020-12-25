@@ -15,8 +15,8 @@ df_cp_throw_filt <- df_cp_throw_filt %>% as.data.frame()
 df_cp_throw <- df_cp_throw_filt %>% 
   mutate(
     pass_result = case_when(
-      pass_result == "C" ~ 0, 
-      pass_result == "I" ~ 1),
+      pass_result == "C" ~ 1, 
+      pass_result == "I" ~ 0),
     possession_team = as.factor(possession_team),
     target_height = as.numeric(target_height), 
     roof = as.factor(roof)) %>% 
@@ -65,9 +65,9 @@ prob_train <- rbind(prob_train1, prob_train2)
 
 prob_means <- apply(prob_train, mean, MAR=2)
 
-trained_plus_phat <- cbind(df_cp_throw, prob_means)
+trained_plus_phat_time_of_throw <- cbind(df_cp_throw, prob_means)
 
-save(trained_plus_phat, file = "data/BART_time_of_throw/trained_plus_phat_time_of_throw.RData")
+save(trained_plus_phat_time_of_throw, file = "data/BART_time_of_throw/trained_plus_phat_time_of_throw.RData")
 # probabilities are the "prob_means" variable 
 
 
