@@ -70,4 +70,20 @@ trained_plus_phat_time_of_throw <- cbind(df_cp_throw, prob_means)
 save(trained_plus_phat_time_of_throw, file = "data/BART_time_of_throw/trained_plus_phat_time_of_throw.RData")
 # probabilities are the "prob_means" variable 
 
+# Variable selection
+
+varcount <- rbind(bart_fit1$varcount, bart_fit2$varcount)
+varprob <- rbind(bart_fit1$varprob, bart_fit2$varprob)
+
+varcount_mean <- colMeans(varcount)
+varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
+
+sort(colMeans(varcount), decreasing = TRUE)[1:10]
+sort(colMeans(varprob), decreasing = TRUE)[1:10]
+
+
+## without team variable:
+# variables with largest posterior mean splitting probability are air_yards (17.5%) and dist_def1 (17%)
+# others: target_weight (7%), qb_hit (7%), yards_from_los (6%), angle_diff (6%),
+# yards_from_sideline (5%), dist_qb (4%), roof (4%), down (3%)
 

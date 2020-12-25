@@ -78,4 +78,18 @@ trained_plus_phat_time_of_arrival <- cbind(df_cp_arrival, prob_means)
 save(trained_plus_phat_time_of_arrival, file = "data/BART_time_of_arrival/trained_plus_phat_time_of_arrival.RData")
 # probabilities are the "prob_means" variable 
 
+# Variable selection
 
+varcount <- rbind(bart_fit1$varcount, bart_fit2$varcount)
+varprob <- rbind(bart_fit1$varprob, bart_fit2$varprob)
+
+varcount_mean <- colMeans(varcount)
+varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
+
+sort(colMeans(varcount), decreasing = TRUE)[1:10]
+sort(colMeans(varprob), decreasing = TRUE)[1:10]
+
+## without team variable: 
+# variable with largest posterior mean splitting probability is dist_def1 (22.3%)
+# others: roof (7%), yards_from_sideline (6%), precipitation (6%), time_ball_in_air (6%),
+# target_weight (5%), dist_def2 (5%), yards_from_los (4%), dist_qb (4%), qb_hit2 (4%) 
