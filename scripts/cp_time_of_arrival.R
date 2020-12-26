@@ -3,6 +3,9 @@ library(janitor)
 library(arrow)
 library(naniar)
 
+games <- read_csv('data/games.csv') %>%
+  clean_names()
+
 plays <- read_csv("data/plays.csv") %>% 
   clean_names() %>% 
   # There are 2 of these. Not sure what to do with them... drop them.
@@ -122,6 +125,46 @@ receiver_dist_sideline <-  all_merged %>%
 
 df_cp_arrival <- left_join(df_cp_arrival, receiver_dist_sideline)
 
+
+## score differential
+score_diff <- 
+  left_join(plays, games) %>% 
+  mutate(
+    score_diff = case_when(
+      home_team_abbr == possession_team ~ 
+        (pre_snap_home_score - pre_snap_visitor_score),
+      home_team_abbr != possession_team ~ 
+        (pre_snap_visitor_score - pre_snap_home_score)
+    ),
+    is_leading = ifelse(score_diff > 0, 1, 0),
+    n_scores = ifelse(is_leading == 1, ceiling(abs(score_diff) / 8),
+                      -ceiling(abs(score_diff) / 8)))
+
+df_cp_arrival <- left_join(df_cp_arrival, score_diff)
+
+## cumulative distance traveled until pass arrival 
+dist_traveled <- 
+  all_merged %>% 
+  filter(nfl_id == target_nfl_id) %>%
+  group_by(game_id, play_id) %>% 
+  summarize(arr_frame = 
+              ifelse('pass_arrived' %in% event, 
+                     frame_id[event == 'pass_arrived'], NA),
+            dist_traveled = 
+              ifelse( is.na(arr_frame), NA, 
+                      sum(dis[frame_id <= arr_frame]))) %>% 
+  select(-arr_frame)
+
+df_cp_arrival <- left_join(df_cp_arrival, dist_traveled)
+
+## receiver speed at time of arrival
+receiver_speed <- 
+  all_merged %>% 
+  filter(nfl_id == target_nfl_id, event %in% pass_events) %>%
+  select(game_id, play_id, receiver_speed = s) #%>% 
+#mutate(receiver_speed = 3600 / 1760 * receiver_speed) 
+
+df_cp_arrival <- left_join(df_cp_arrival, receiver_speed)
 
 ## time ball in air
 time_in_air <- all_merged %>%

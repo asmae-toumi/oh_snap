@@ -3,6 +3,9 @@ library(janitor)
 library(arrow)
 library(naniar)
 
+games <- read_csv('data/games.csv') %>% 
+  clean_names()
+
 plays <- read_csv("data/plays.csv") %>% 
   clean_names() %>% 
   # There are 2 of these. Not sure what to do with them... drop them.
@@ -135,6 +138,41 @@ ang_diff <- all_merged %>%
 
 df_cp_throw <- left_join(df_cp_throw, ang_diff)
 
+## add time from snap to throw
+time_to_throw <- all_merged %>%
+  filter(team=='football', 
+         event %in% c('ball_snap','pass_forward','pass_shovel')) %>%
+  group_by(game_id, play_id) %>%
+  summarise(time_to_throw = diff(frame_id)/10) %>% 
+  ## take max in case of duplicate throw frames
+  summarise(time_to_throw = max(time_to_throw))
+
+df_cp_throw <- left_join(df_cp_throw, time_to_throw)
+
+## add score differential variables
+score_diff <- 
+  left_join(plays, games) %>% 
+  mutate(
+    score_diff = case_when(
+      home_team_abbr == possession_team ~ 
+        (pre_snap_home_score - pre_snap_visitor_score),
+      home_team_abbr != possession_team ~ 
+        (pre_snap_visitor_score - pre_snap_home_score)
+    ),
+    is_leading = ifelse(score_diff > 0, 1, 0),
+    n_scores = ifelse(is_leading == 1, ceiling(abs(score_diff) / 8),
+                      -ceiling(abs(score_diff) / 8)))
+
+df_cp_throw <- left_join(df_cp_throw, score_diff)
+
+## add speed of QB at time of throw
+qb_speed <- 
+  all_merged %>% 
+  filter(position == 'QB', event %in% throw_events) %>%
+  select(game_id, play_id, qb_speed = s) #%>%
+#mutate(receiver_speed = 3600 / 1760 * receiver_speed) 
+
+df_cp_throw <- left_join(df_cp_throw, qb_speed)
 
 ## add checks for spikes and tipped passes
 tracking_filters <- all_merged %>% 
