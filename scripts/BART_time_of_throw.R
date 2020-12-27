@@ -33,14 +33,15 @@ drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp",
                "air_yards", "play_description", "play_type", "yardline_side", 
                "yardline_number", "personnel_o", "personnel_d", 
                "offense_play_result", "play_result", "epa", 
-               "is_defensive_pi", "game_date", "game_time_eastern", "week" 
-               )
+               "is_defensive_pi", "game_date", "game_time_eastern", "week",
+               "is_spike", "is_tip", "is_throw_away", "is_penalty")
+               
 
 y <- df_cp_throw$pass_result
 x <- df_cp_throw[,!colnames(df_cp_throw) %in% drop_cols]
 
 # BART
-bart_fit1 <- pbart(x.train = x, 
+bart_fit1 <- lbart(x.train = x, 
                    y.train = y, 
                    sparse = TRUE, 
                    ndpost = 500, 
@@ -51,7 +52,7 @@ bart_fit1 <- pbart(x.train = x,
 saveRDS(bart_fit1, file = "data/BART_time_of_throw/bart_fit1.RDS")
 
 
-bart_fit2 <- pbart(x.train = x, 
+bart_fit2 <- lbart(x.train = x, 
                     y.train = y, 
                     sparse = TRUE, 
                     ndpost = 500, 
@@ -103,9 +104,16 @@ varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
 sort(colMeans(varcount), decreasing = TRUE)[1:10]
 sort(colMeans(varprob), decreasing = TRUE)[1:10]
 
-# variables with largest posterior mean splitting probability are dist_def1 (19%) and dist_qb (11%)
-# others: ange_diff (9%), target_weight (9%), time_to_throw (8%), qb_speed (5%),
-# qb_hit1 (5%)
+#target_weight       dist_def1 
+#0.13143302          0.11261055 
+#angle_diff          qb_speed 
+#0.10300300          0.08246918 
+#dist_qb             yards_from_sideline 
+#0.05959188          0.05283012 
+#time_to_throw       roof4 
+#0.04678602          0.03771001 
+#qb_hit1             qb_hit2 
+#0.03543694          0.03298055 
 
 
 

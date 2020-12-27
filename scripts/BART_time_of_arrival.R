@@ -36,13 +36,14 @@ drop_cols <- drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result"
                             "air_yards", "play_description", "play_type", "yardline_side", 
                             "yardline_number", "personnel_o", "personnel_d", 
                             "offense_play_result", "play_result", "epa", 
-                            "is_defensive_pi", "game_date", "game_time_eastern", "week" )
+                            "is_defensive_pi", "game_date", "game_time_eastern", "week",
+                            "is_spike", "is_tip", "is_throw_away", "is_penalty")
 
 y <- df_cp_arrival$pass_result
 x <- df_cp_arrival[,!colnames(df_cp_arrival) %in% drop_cols]
 
 # BART
-bart_fit1 <- pbart(x.train = x, 
+bart_fit1 <- lbart(x.train = x, 
                    y.train = y, 
                    sparse = TRUE, 
                    ndpost = 500, 
@@ -52,7 +53,7 @@ bart_fit1 <- pbart(x.train = x,
 
 save(bart_fit1, file = "data/BART_time_of_arrival/bart_fit1.RData")
 
-bart_fit2 <- pbart(x.train = x, 
+bart_fit2 <- lbart(x.train = x, 
                    y.train = y, 
                    sparse = TRUE, 
                    ndpost = 500, 
@@ -104,8 +105,14 @@ varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
 sort(colMeans(varcount), decreasing = TRUE)[1:10]
 sort(colMeans(varprob), decreasing = TRUE)[1:10]
 
-# variable with largest posterior mean splitting probability is dist_def1 (23%)
-# others: precipitation (9%), dist_traveled (7%), qb_hit (6%), yards_from_sideline (5%),
-# time_ball_in_air (4%), dist_def2 (4%), roof (4%), target_height (3%)
+# variable with largest posterior mean splitting probability are yards_from_sideline (13%) and dist_def1 (13%)
+# wind_speed         target_height 
+#0.07352017          0.06558808 
+#target_weight       precipitation 
+#0.06515864          0.05495814 
+#receiver_speed      roof4 
+#0.03849751          0.03741811 
+#down                dist_traveled 
+#0.03731763          0.03487519
 
 
