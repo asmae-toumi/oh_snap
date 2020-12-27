@@ -160,7 +160,7 @@ df_cp_arrival <- left_join(df_cp_arrival, dist_traveled)
 ## receiver speed at time of arrival
 receiver_speed <- 
   all_merged %>% 
-  filter(nfl_id == target_nfl_id, event %in% pass_events) %>%
+  filter(nfl_id == target_nfl_id, event == 'pass_arrived') %>%
   select(game_id, play_id, receiver_speed = s) #%>% 
 #mutate(receiver_speed = 3600 / 1760 * receiver_speed) 
 
