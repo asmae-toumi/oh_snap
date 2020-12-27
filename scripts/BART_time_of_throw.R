@@ -20,11 +20,16 @@ df_cp_throw <- df_cp_throw_filt %>%
   mutate(
     pass_result = case_when(
       pass_result == "C" ~ 1, 
-      pass_result == "I" ~ 0),
+      pass_result == "I" ~ 0,
+      pass_result == "IN" ~ 0),
     target_height = as.numeric(target_height), 
     qb_hit = as.factor(qb_hit),
     is_leading = as.factor(is_leading),
-    roof = as.factor(roof)) %>% 
+    roof = as.factor(roof),
+    precipitation = case_when(
+      precipitation > 0 ~ 1,
+      TRUE ~ 0),
+    precipitation = as.factor(precipitation)) %>% 
   drop_na()
 
 # prepping data for BART
@@ -104,16 +109,16 @@ varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
 sort(colMeans(varcount), decreasing = TRUE)[1:10]
 sort(colMeans(varprob), decreasing = TRUE)[1:10]
 
-#target_weight       dist_def1 
-#0.13143302          0.11261055 
-#angle_diff          qb_speed 
-#0.10300300          0.08246918 
-#dist_qb             yards_from_sideline 
-#0.05959188          0.05283012 
-#time_to_throw       roof4 
-#0.04678602          0.03771001 
-#qb_hit1             qb_hit2 
-#0.03543694          0.03298055 
+# target_weight       angle_diff 
+# 0.16315783          0.13085661 
+# dist_def1           qb_speed 
+# 0.10964138          0.08671070 
+# dist_qb             time_to_throw 
+# 0.07903457          0.05059011 
+# qb_hit1             roof4 
+# 0.04568015          0.03845713 
+# yards_from_sideline dist_def2 
+# 0.03504487          0.03310833 
 
 
 

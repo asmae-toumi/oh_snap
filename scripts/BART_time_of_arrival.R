@@ -21,13 +21,18 @@ df_cp_arrival <- df_cp_arrival_filt %>%
   mutate(
     pass_result = case_when(
       pass_result == "C" ~ 1, 
-      pass_result == "I" ~ 0),
+      pass_result == "I" ~ 0,
+      pass_result == "IN" ~ 0),
     target_height = as.numeric(target_height), 
     qb_hit = as.factor(qb_hit),
     is_leading = as.factor(is_leading),
-    roof = as.factor(roof)
+    roof = as.factor(roof), 
+    precipitation = case_when(
+      precipitation > 0 ~ 1,
+      TRUE ~ 0
+    ),
+    precipitation = as.factor(precipitation)
     ) %>% 
-  distinct_at(vars(game_id, play_id), .keep_all = T) %>% # remove duplicated rows 
   drop_na()
 
 # prepping data for BART
@@ -106,13 +111,15 @@ sort(colMeans(varcount), decreasing = TRUE)[1:10]
 sort(colMeans(varprob), decreasing = TRUE)[1:10]
 
 # variable with largest posterior mean splitting probability are yards_from_sideline (13%) and dist_def1 (13%)
-# wind_speed         target_height 
-#0.07352017          0.06558808 
-#target_weight       precipitation 
-#0.06515864          0.05495814 
-#receiver_speed      roof4 
-#0.03849751          0.03741811 
-#down                dist_traveled 
-#0.03731763          0.03487519
+# dist_def1 yards_from_sideline 
+# 0.14510690          0.10798427 
+# receiver_speed       target_weight 
+# 0.08415247          0.07130682 
+# wind_speed            humidity 
+# 0.07098384          0.05111391 
+# down             qb_hit2 
+# 0.04718137          0.04533549 
+# target_height               roof4 
+# 0.04405888          0.03916024 
 
 
