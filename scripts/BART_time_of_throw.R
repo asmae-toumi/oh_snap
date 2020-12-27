@@ -6,7 +6,11 @@ library(BART)
 
 str(df_cp_throw_filt)
 
-df_cp_throw_filt <- df_cp_throw_filt %>% as.data.frame()
+df_cp_throw_filt <- df_cp_throw_filt %>% 
+  as.data.frame() %>% 
+  select(-c(penalty_codes, penalty_jersey_numbers, offense_formation, 
+            defenders_in_the_box, type_dropback, pre_snap_home_score,
+            pre_snap_visitor_score, n_scores, game_clock, absolute_yardline_number)) 
 
 # changing outcome to 0-1
 # changing possession team to factor
@@ -17,13 +21,20 @@ df_cp_throw <- df_cp_throw_filt %>%
     pass_result = case_when(
       pass_result == "C" ~ 1, 
       pass_result == "I" ~ 0),
-    possession_team = as.factor(possession_team),
     target_height = as.numeric(target_height), 
+    qb_hit = as.factor(qb_hit),
+    is_leading = as.factor(is_leading),
     roof = as.factor(roof)) %>% 
   drop_na()
 
 # prepping data for BART
-drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp")
+drop_cols <- c("game_id", "play_id", "target_nfl_id", "pass_result", "cp", 
+               "possession_team", "home_team_abbr", "visitor_team_abbr", 
+               "air_yards", "play_description", "play_type", "yardline_side", 
+               "yardline_number", "personnel_o", "personnel_d", 
+               "offense_play_result", "play_result", "epa", 
+               "is_defensive_pi", "game_date", "game_time_eastern", "week" 
+               )
 
 y <- df_cp_throw$pass_result
 x <- df_cp_throw[,!colnames(df_cp_throw) %in% drop_cols]
@@ -57,18 +68,29 @@ ess <- effectiveSize(mcmc.list(mcmc(bart_fit1$prob.train), mcmc(bart_fit2$prob.t
 
 save(rhat, ess, file = "data/BART_time_of_throw/bart_fit_diags.RData")
 
-# Posterior means of probability 
+# Posterior means of probability and credible intervals 
 
 prob_train1 <- bart_fit1$prob.train
 prob_train2 <- bart_fit2$prob.train
 prob_train <- rbind(prob_train1, prob_train2)
 
+# posterior means
 prob_means <- apply(prob_train, mean, MAR=2)
 
-trained_plus_phat_time_of_throw <- cbind(df_cp_throw, prob_means)
+# 95% CI
+ci.fun <- function(a){
+  c(quantile(a,.025),quantile(a,.975))
+}
+
+prob.ci = apply(prob_train, 2, ci.fun)
+
+low_bound = prob.ci[1,] 
+upp_bound = prob.ci[2,]
+
+trained_plus_phat_time_of_throw <- cbind(df_cp_throw, prob_means, low_bound, upp_bound)
 
 save(trained_plus_phat_time_of_throw, file = "data/BART_time_of_throw/trained_plus_phat_time_of_throw.RData")
-# probabilities are the "prob_means" variable 
+# probabilities are the "prob_means" variable, 95% is low_bound and upp_bound 
 
 # Variable selection
 
@@ -81,9 +103,11 @@ varcount_sd <- apply(varcount, FUN = sd, MARGIN = 2)
 sort(colMeans(varcount), decreasing = TRUE)[1:10]
 sort(colMeans(varprob), decreasing = TRUE)[1:10]
 
+# variables with largest posterior mean splitting probability are dist_def1 (19%) and dist_qb (11%)
+# others: ange_diff (9%), target_weight (9%), time_to_throw (8%), qb_speed (5%),
+# qb_hit1 (5%)
 
-## without team variable:
-# variables with largest posterior mean splitting probability are air_yards (17.5%) and dist_def1 (17%)
-# others: target_weight (7%), qb_hit (7%), yards_from_los (6%), angle_diff (6%),
-# yards_from_sideline (5%), dist_qb (4%), roof (4%), down (3%)
+
+
+
 
