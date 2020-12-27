@@ -87,7 +87,7 @@ pass_events <- c("pass_forward","pass_shovel","pass_arrived")
 
 ## distance to 2 closest defenders
 dist_to_closest_def <- min_dist %>% 
-  filter(is_target==1, event %in% pass_events) %>% 
+  filter(is_target==1, event == 'pass_arrived') %>% 
   select(game_id, play_id, dist_def1 = dist_d1_naive, 
          dist_def2 = dist_d2_naive, dist_qb) %>% 
   ## average over duplicates
@@ -102,7 +102,7 @@ df_cp_arrival <- left_join(df_cp_arrival, dist_to_closest_def)
 
 ## receiver distance from los
 receiver_dist_los <- all_merged %>%
-  filter(event %in% pass_events, nfl_id == target_nfl_id) %>% 
+  filter(event == 'pass_arrived', nfl_id == target_nfl_id) %>% 
   mutate(
     yards_from_los = case_when(
       play_direction == "right" ~ x - absolute_yardline_number,
@@ -117,8 +117,7 @@ df_cp_arrival <- left_join(df_cp_arrival, receiver_dist_los)
 
 ## receiver distance from sideline
 receiver_dist_sideline <-  all_merged %>%
-  filter(event %in% pass_events, 
-         nfl_id == target_nfl_id) %>% 
+  filter(event == 'pass_arrived', nfl_id == target_nfl_id) %>% 
   group_by(game_id, play_id) %>% 
   summarise(yards_from_sideline = 
               min(abs(c(y - 0, y - 53.33))))              
