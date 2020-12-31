@@ -41,11 +41,28 @@ read_players <- memoise::memoise({function(positions = read_positions()) {
     dplyr::mutate(dplyr::across(birth_date, ~lubridate::parse_date_time(.x, order = c('y-m-d', 'm/d/y'), exact = FALSE)))
 }})
 
+read_team_coverages <- memoise::memoise({function(week = 1) {
+  if(week != 1) {
+    warning(sprintf('Only have team coverages for week 1.'), call. = FALSE)
+    tibble::tibble()
+  }
+  file.path("data", sprintf("coverages_week%d.csv", week)) %>% 
+    vroom::vroom() %>%
+    janitor::clean_names() %>% 
+    dplyr::mutate(week = !!week)
+}})
+
+read_player_coverages <- memoise::memoise({function(version = 1.2) {
+  file.path("data", sprintf("player_coverages_v%s.csv", version)) %>% 
+    vroom::vroom() %>%
+    janitor::clean_names()
+}})
+
 read_week <- memoise::memoise({function(week = 1) {
   file.path("data", sprintf("week%d.csv", week)) %>% 
     vroom::vroom() %>%
     janitor::clean_names() %>% 
-    dplyr::mutate(week = sprintf('week%d', !!week))
+    dplyr::mutate(week = !!week)
 }})
 
 # regenerate_all_weeks <- function(dir = file.path('data', 'nfl-big-data-bowl-2021')) {
@@ -172,22 +189,47 @@ read_tracking <-
       )
   }
 
+switch_events_end <- function(x = c('throw', 'end_routes')) {
+  x <- match.arg(x)
+  switch(
+    x,
+    throw = c(
+      'pass_forward',
+      'pass_shovel'
+    ),
+    end_routes = c(
+      'pass_outcome_caught',
+      'pass_outcome_incomplete',
+      'qb_sack',
+      'pass_outcome_interception',
+      'pass_outcome_touchdown',
+      'qb_strip_sack',
+      'qb_spike'
+    )
+  )
+}
+
 # Probably need to put this in some other file since it doesn't go perfectly with all these `read_*` functions.
 # When `group = 0`, it's pre-snap. When `group = 2`, it's `events`.
 # An alternate `init_cnd` might be `quos(frame_id == 1)`. (You don't technically need to use `quos()` if it's just one condition; just `quo()` would suffice.) A base R alternative to the `quos()`-`!!!` combo would be `expr()`-`eval()`.
-clip_tracking_at_events <- function(tracking, events, init_cnd = quos(event == 'ball_snap')) {
-  tracking %>% 
-    group_by(game_id, play_id, nfl_id) %>%
-    mutate(
-      group = case_when(
-        !!!init_cnd ~ 1L,
-        dplyr::lag(event) %in% !!events ~ 1L,
-        TRUE ~ 0L
-      ),
-      group = cumsum(group)
-    ) %>%
-    ungroup() %>%
-    filter(group == 1L) %>%
-    select(-group)
-}
+clip_tracking_at_events <-
+  function(tracking,
+           at = c('throw', 'end_routes'),
+           events = switch_events_end(at),
+           init_cnd = quos(event == 'ball_snap')) {
+    tracking %>%
+      group_by(game_id, play_id, nfl_id) %>%
+      mutate(
+        group = 
+          case_when(
+            !!!init_cnd ~ 1L,
+            dplyr::lag(event) %in% !!events ~ 1L,
+            TRUE ~ 0L
+          ),
+        group = cumsum(group)
+      ) %>%
+      ungroup() %>%
+      filter(group == 1L) %>%
+      select(-group)
+  }
 

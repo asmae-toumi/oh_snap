@@ -8,7 +8,7 @@ games <- read_games()
 plays <- read_plays()
 
 tracking <-
-  read_tracking(max_week = 1L, minimal = TRUE) %>% 
+  read_tracking(max_week = 1L) %>% 
   add_side_cols()
 
 # Filter out stuff before the snap and after the pass has arrived.
