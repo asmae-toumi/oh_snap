@@ -1,0 +1,5 @@
+set,.metric,.estimator,.estimate
+full,accuracy,binary,0.9938918435048181
+full,roc_auc,binary,0.9989669631100916
+oob,accuracy,binary,0.8744405244589543
+oob,roc_auc,binary,0.9231858562976832
