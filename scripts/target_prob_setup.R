@@ -5,6 +5,7 @@ source('scripts/gg_field.R')
 
 ggplot2::theme_set(hrbrthemes::theme_ipsum(base_family = '', base_size = 14))
 ggplot2::theme_update(
+  plot.margin = ggplot2::margin(10, 10, 10, 10),
   plot.title = ggplot2::element_text(size = 18),
   plot.subtitle = ggplot2::element_text(size = 14),
   plot.title.position = 'plot',
@@ -712,7 +713,7 @@ animate_play <-
       ggplot2::geom_text(
         data = nontarget_tracking,
         ggplot2::aes(label = .data$jersey_number, color = .data$side),
-        # size = pts(14), 
+        size = pts(14), 
         show.legend = FALSE,
         fontface = 'bold'
       )
@@ -747,7 +748,7 @@ animate_play <-
         ggplot2::geom_text(
           data = target_tracking,
           ggplot2::aes(label = .data$jersey_number, color = .data$side),
-          # size = pts(14),
+          size = pts(14),
           show.legend = FALSE,
           fontface = 'bold'
         )
@@ -786,13 +787,22 @@ animate_play <-
     
     if(target_prob) {
       
-      frame_ids <- tracking_clipped %>% distinct(frame_id) %>% pull(frame_id)
+      frame_ids <- tracking %>% distinct(frame_id) %>% pull(frame_id)
       display_names <- tracking_clipped %>% distinct(nfl_id, display_name, jersey_number)
       frame_snap <-
         tracking_clipped %>% 
         filter(event == 'ball_snap') %>% 
         distinct(frame_id) %>% 
         pull(frame_id)
+      assertthat::assert_that(length(frame_snap) == 1L)
+
+      frame_throw <-
+        tracking %>% 
+        filter(!(event %in% c('ball_snap', 'None'))) %>% 
+        distinct(frame_id) %>% 
+        slice(1) %>% 
+        pull(frame_id)
+      assertthat::assert_that(length(frame_throw) == 1L)
       
       grid <-
         crossing(
@@ -807,24 +817,61 @@ animate_play <-
         arrange(nfl_id, frame_id) %>% 
         group_by(nfl_id) %>% 
         fill(prob, .direction = 'up') %>% 
+        fill(prob, .direction = 'down') %>% 
         ungroup() %>% 
         filter(!is.na(prob)) %>% 
         left_join(
-          tracking_clipped %>% 
+          tracking %>% 
             select(frame_id, nfl_id, display_name, jersey_number), by = c('frame_id', 'nfl_id')) %>% 
         mutate(
           lab = sprintf('%s (%s)', display_name, jersey_number) %>% factor()
         )
       probs_aug
       
+      .f <- function(.frame_id) {
+        probs_aug %>% 
+          filter(frame_id == .frame_id) %>% 
+          pull(prob) %>% 
+          max()
+      }
+      
+      prob_snap_max <- .f(frame_snap)
+      prob_throw_max <- .f(frame_throw)
+      
+      snap_frame <- tibble(x = !!frame_snap, event = 'ball_snap', y = prob_snap_max + 0.1)
+      event_throw <- tracking %>% filter(frame_id == !!frame_throw) %>% distinct(event) %>% pull(event)
+      throw_frame <- tibble(x = !!frame_throw, event = event_throw, y = prob_throw_max + 0.1)
       p_tp <-
         probs_aug %>% 
         ggplot() +
         aes(x = frame_id, y = prob, color = lab) +
         geom_vline(
-          # inherit.aes = FALSE,
-          data = tibble(x = !!frame_snap),
-          aes(xintercept = .data$x)
+          data = snap_frame,
+          aes(xintercept = x),
+          size = 1,
+          linetype = 2
+        ) +
+        geom_text(
+          data = snap_frame,
+          inherit.aes = FALSE,
+          aes(x = x, y = 0.4, label = event),
+          angle = 90,
+          vjust = 1,
+          size = pts(14)
+        ) +
+        geom_vline(
+          data = throw_frame,
+          aes(xintercept = x),
+          size = 1,
+          linetype = 2
+        ) +
+        geom_text(
+          data = throw_frame,
+          inherit.aes = FALSE,
+          aes(x = x, y = 0.4, label = event),
+          angle = 90,
+          vjust = 1,
+          size = pts(14)
         ) +
         geom_line(aes(group = lab), size = 1.25) +
         geom_text(aes(label = lab), size = pts(14), vjust = 1, hjust = 1) +
@@ -875,9 +922,13 @@ animate_play <-
     
     if(target_prob) {
       anim_tp <- p_tp + gganimate::transition_reveal(.data$frame_id)
-      seconds_tp <- frame_ids %>% length() %>% {. / 10}
-      end_pause_tp <- end_pause + (seconds - seconds_tp)
-      nframe_tp <- (seconds_tp + end_pause_tp) * fps
+      # Adjustment is needed if tp stuff has a different number of frames.
+      # seconds_tp <- frame_ids %>% length() %>% {. / 10}
+      # end_pause_tp <- end_pause + (seconds - seconds_tp)
+      # nframe_tp <- (seconds_tp + end_pause_tp) * fps
+      seconds_tp <- seconds
+      end_pause_tp <- end_pause
+      nframe_tp <- nframe
       res_tp <- 
         save_animation(
           anim_tp,
@@ -902,17 +953,18 @@ animate_play <-
   .path_data_big(sprintf('%s_week%02d', prefix, week), ext = 'rds')
 }
 
-
 do_identify_personnel_and_rushers <-
   function(week = 1L,
            at = 'end_rush',
            overwrite = FALSE,
            path = .path_data_big_rds_week('personnel_and_rushers', week),
+           # plays = import_plays(),
+           positions = import_positions(),
            ...) {
     
     if(file.exists(path) & !overwrite) {
       .display_info('Importing data from `path = "{path}"` and not re-generating.')
-      res <- path %>% arrow::read_parquet()
+      res <- path %>% arrow::read_rds()
       return(res)
     }
     
@@ -1016,22 +1068,22 @@ do_identify_personnel_and_rushers <-
         n_rusher = purrr::map_int(rushers, ~nrow(.x))
       ) %>%
       dplyr::relocate(rushers, .after = dplyr::last_col())
-    arrow::write_parquet(res, path)
+    arrow::write_rds(res, path)
     res
   }
 
-do_import_routes <-
+do_identify_routes <-
   function(week = 1L,
            overwrite = FALSE,
            path = .path_data_big_parquet_week('routes', week),
            ...) {
-
+    
     if(file.exists(path) & !overwrite) {
       .display_info('Importing data from `path = "{path}"` and not re-generating.')
       res <- path %>% arrow::read_parquet()
       return(res)
     }
-
+    
     .display_info('Processing week {week} at {Sys.time()}.')
     tracking <- week %>% import_tracking(standardize = FALSE)
     res <-
@@ -1098,7 +1150,7 @@ do_generate_features_at_events <-
            all = TRUE,
            path = .path_data_big_parquet_week(sprintf('target_prob_features_%s', ifelse(all, 'all', 'minmax')), week),
            path_min_dists = .path_data_big_parquet_week(sprintf('min_dists_naive_%s', ifelse(all, 'all', 'minmax')), week),
-           overwrite = FALSE, 
+           overwrite = FALSE,
            plays = import_plays(),
            targets = import_targets(plays = plays),
            personnel_and_rushers = import_personnel_and_rushers(),
@@ -1163,9 +1215,9 @@ do_generate_features_at_events <-
     frames <-
       tracking %>%
       clip_tracking_at_events(at = 'throw')
-
+    
     snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
-
+    
     frames <-
       frames %>% 
       left_join(
@@ -1185,10 +1237,11 @@ do_generate_features_at_events <-
         dplyr::ungroup() %>% 
         dplyr::distinct()
     }
-
+    
     
     personnel_and_rushers_week <-
       personnel_and_rushers %>%
+      # Filter first cuz unnesting all tibbles can take a bit of time.
       dplyr::filter(.data$week == !!week) %>%
       dplyr::filter(.data$n_rusher > 0L) %>%
       dplyr::mutate(rushers = purrr::map(.data$rushers, ~dplyr::select(.x, .data$nfl_id, .data$idx_closest_to_ball))) %>%
@@ -1315,7 +1368,7 @@ do_generate_features_at_events <-
       select(game_id, play_id, frame_id, event, nfl_id, matches('_d'), idx_closest)
     
     if(TRUE) {
-
+      
       min_dists_naive <-
         frames_o %>%
         # dplyr::filter(is_target == 1L) %>%
@@ -1344,7 +1397,7 @@ do_generate_features_at_events <-
       
       min_dists_naive %>% arrow::write_parquet(path_min_dists)
     }
-
+    
     res <-
       frames_o %>%
       dplyr::full_join(
@@ -1406,7 +1459,11 @@ do_generate_features_at_events <-
         dist_ball_d1_naive = .dist(.data$x_d1_naive, .data$qb_x, .data$y_d1_naive, .data$qb_y),
         dist_ball_d2_naive = .dist(.data$x_d2_naive, .data$qb_x, .data$y_d2_naive, .data$qb_y),
         dist_los = .data$x -  .data$los
-      )
+      ) %>% 
+      distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
+      group_by(game_id, play_id, frame_id) %>% 
+      mutate(idx_o = row_number(idx_o)) %>% 
+      ungroup()
     arrow::write_parquet(res, path)
     res
   }
@@ -1578,12 +1635,12 @@ binary_fct_to_lgl <- function(x) {
 
 .get_feature_labs <- memoise::memoise({function() {
   tibble(
-      feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
-      feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball closest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
-    )
+    feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
+    feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball closest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
+  )
 }})
 
-do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
+do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwrite = TRUE, suffix = cnd) {
   
   .suffix <- if(cnd %in% c('start', 'end')) {
     'minmax'
@@ -1620,10 +1677,9 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     features_x <- features %>% dplyr::sample_frac(0.1)
     caption <- glue::glue(
       'Relative target share rank, receiver position, QB orientation, and various distance-based features 
-                             are most important for predicting which receiver will be targeted at any point after the snap.'
+       are most important for predicting which receiver will be targeted at any point after the snap.'
     )
   }
-  suffix <- cnd
   
   .path_data_small_x <- function(file, ext = NULL) {
     .path_data_small(file = sprintf('%s_target_prob_%s', file, suffix), ext = ext)
@@ -1698,7 +1754,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     ) %>% 
     dplyr::mutate(sec = 0.1 * (frame_id - frame_id_start)) %>% 
     dplyr::select(dplyr::any_of(cols_lst$cols_keep)) %>% 
-    tidyr::drop_na() %>% 
+    # tidyr::drop_na() %>% 
+    filter(!is.na(idx_o) & !is.na(qb_o)) %>% 
     dplyr::mutate(idx = dplyr::row_number()) %>% 
     dplyr::relocate(idx)
   features_df
@@ -1718,6 +1775,32 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       features_mat,
       label = features_df[[cols_lst$col_y]]
     )
+  
+  col_y_sym <- cols_lst$col_y %>% dplyr::sym()
+  features_df_filt <-
+    features_df %>% 
+    filter(!is.na(!!col_y_sym)) %>% 
+    distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
+    mutate(idx = row_number()) %>% 
+    relocate(idx)
+  features_df_filt
+  
+  features_mat_filt <- 
+    model.matrix(
+      ~.+0, 
+      data = 
+        features_df_filt %>% 
+        select(one_of(cols_lst$cols_keep)) %>% 
+        select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
+    )
+  
+  features_dmat_filt <-
+    xgboost::xgb.DMatrix(
+      features_mat_filt,
+      label = features_df_filt[[cols_lst$col_y]]
+    )
+  
+  
   .nrounds <- 500
   .booster <- 'gbtree'
   .objective <- 'binary:logistic'
@@ -1737,8 +1820,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     dplyr::select(fold, idx) %>% 
     split(.$fold) %>% 
     purrr::map(~dplyr::select(.x, -fold) %>% dplyr::pull(idx))
-
-  if(!file.exists(path_res_tune_cv)) {
+  
+  if(!file.exists(path_res_tune_cv) & !overwrite) {
     
     n_row <- 20
     grid_params <- 
@@ -1760,8 +1843,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     .get_metrics <-
       function(data,
                row = 1,
-               path = .path_data_big(sprintf('res_tune_cv_target_prob_%02d', row), ext = 'rds'),
-               overwrite = TRUE) {
+               path = .path_data_big(sprintf('res_tune_cv_target_prob_%02d', row), ext = 'rds')) {
         # row = 1; data <- grid_params %>% slice(row)
         
         path_exists <- path %>% file.exists()
@@ -1785,7 +1867,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
         
         fit_cv <-
           xgboost::xgb.cv(
-            data = features_dmat, 
+            data = features_dmat_filt, 
             params = params, 
             nrounds = .nrounds,
             folds = folds, 
@@ -1824,6 +1906,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   .f <- function(x) {
     res_cv_best %>% purrr::pluck(x)
   }
+  
   params_best <-
     list(
       booster = .booster,
@@ -1839,6 +1922,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   
   # For the 'all' condition, 10% of the data set was used for tuning (since it's ginormous).
   # Now use all of the data for the final model (`fit)` + final out of bag models (`fit_cv`) + shap
+  # TODO: Really should have written a function for these repetive actions, but i would need to return things in a list.
   if(cnd == 'all') {
     features_x <- features
     features_df <-
@@ -1872,7 +1956,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     
     set.seed(42)
     play_ids <- features_df %>% dplyr::distinct(game_id, play_id) %>% dplyr::mutate(idx_play = dplyr::row_number())
-
+    
     folds_ids <- caret::createFolds(play_ids$idx_play, k = 10, list = FALSE, returnTrain = FALSE)
     # names(folds_ids) <- NULL
     
@@ -1885,7 +1969,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       purrr::map(~dplyr::select(.x, -fold) %>% dplyr::pull(idx))
   }
   
-  if(!file.exists(path_fit)) {
+  # Train on everything, including plays without a targeted receiver.
+  if(!file.exists(path_fit) & !overwrite) {
     fit <- 
       xgboost::xgboost(
         params = params_best, 
@@ -1911,18 +1996,19 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       ... =
     )
   
+  # Can only predict out of bag on labeled plays, so use `_filt` here.
   if(!file.exists(path_probs)) {
     # debugonce(.augment_target_probs)
     probs <-
       fit %>% 
-      predict(features_dmat, type = 'prob') %>% 
+      predict(features_dmat_filt, type = 'prob') %>% 
       .augment_target_probs_x(path = path_probs)
     probs 
   } else {
     probs <- path_probs %>% arrow::read_parquet()
   }
   
-  if(!file.exists(path_res_cv) | !file.exists(path_probs_oob)) {
+  if(!file.exists(path_res_cv) | !file.exists(path_probs_oob) & !overwrite) {
     
     fit_cv <-
       xgboost::xgb.cv(
@@ -1951,8 +2037,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     
   }
   
-  col_y_sym <- cols_lst$col_y %>% dplyr::sym()
-  # if(!file.exists(path_roc_curve) | !file.exists(path_roc_curve_compare)) {
+  # if(!file.exists(path_roc_curve) | !file.exists(path_roc_curve_compare) & !overwrite) {
   #   
   #   roc_curve <-
   #     dplyr::bind_rows(
@@ -2006,7 +2091,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   #   )
   # }
   
-  if(!file.exists(path_shap)) {
+  if(!file.exists(path_shap) & !overwrite) {
     
     # Downsize to just 10% of the data again for shap stuff.
     if(cnd == 'all') {
@@ -2090,7 +2175,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   shap_agg_by_feature
   
   features_labs <- .get_feature_labs()
-
+  
   .prep_viz_data <- function(data) {
     data %>% 
       dplyr::left_join(feature_labs) %>% 
@@ -2153,7 +2238,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   #   )
   # }
   
-  if(!file.exists(path_shap_agg)) {
+  if(!file.exists(path_shap_agg) & !overwrite) {
     viz_shap_agg <- 
       shap_agg_by_feature %>% 
       .prep_viz_data() %>% 
@@ -2182,7 +2267,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     )
   }
   
-  if(!file.exists(path_metrics) | !file.exists(path_metrics_gt) | !file.exists(path_metrics_compare_gt)) {
+  if((!file.exists(path_metrics) | !file.exists(path_metrics_gt) | !file.exists(path_metrics_compare_gt)) & !overwrite) {
     
     # multiclass
     frames_last <-
@@ -2192,7 +2277,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       slice_max(frame_id) %>%
       ungroup()
     frames_last
-
+    
     target_idx <-
       frames_last %>%
       filter(is_target == '1') %>%
@@ -2200,7 +2285,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       filter(idx_o_target <= 6) %>%
       select(-nfl_id, -is_target)
     target_idx
-
+    
     .prep_multiclass <- function(data, f = yardstick::accuracy) {
       data %>% 
         # semi_join(frames_last) %>%
@@ -2387,7 +2472,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     )
 }
 
-do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
+do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays(), overwrite = FALSE, suffix = cnd) {
   
   .suffix <- if(cnd %in% c('start', 'end')) {
     'minmax'
@@ -2400,7 +2485,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     semi_join(plays %>% select(game_id, play_id)) %>% 
     filter(!is.na(idx_o)) %>% 
     filter(!is.na(qb_o)) %>% 
-    # Shouldn't be necessary anymore
+    # Shouldn't be necessary anymore, but doesn't hurt.
     distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE)
   
   features_catch <- 
@@ -2443,7 +2528,6 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     features_x <- features
     caption <- NULL
   }
-  suffix <- cnd
   
   .path_data_small_x <- function(file, ext = NULL) {
     .path_data_small(file = sprintf('%s_catch_prob_%s', file, suffix), ext = ext)
@@ -2463,7 +2547,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   path_fit_config <- .path_data_small_x('fit_config')
   path_res_cv <- .path_data_big_parquet_x('res_cv')
   path_probs <- .path_data_big_parquet_x('probs')
-
+  
   cols_lst <-
     list(
       col_y = 'is_catch',
@@ -2575,7 +2659,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   # n_fold <- folds %>% flatten_int() %>% max()
   # n_fold
   
-  if(!file.exists(path_res_tune_cv)) {
+  if(!file.exists(path_res_tune_cv) & !overwrite) {
     
     n_row <- 20
     grid_params <- 
@@ -2597,8 +2681,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     .get_metrics <-
       function(data,
                row = 1,
-               path = .path_data_big(sprintf('res_tune_cv_catch_prob_%02d', row), ext = 'rds'),
-               overwrite = TRUE) {
+               path = .path_data_big(sprintf('res_tune_cv_catch_prob_%02d', row), ext = 'rds')) {
         # row = 1; data <- grid_params %>% slice(row)
         
         path_exists <- path %>% file.exists()
@@ -2656,22 +2739,25 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   # These can be used in the next 2 ifelse clauses. Easiest to just always run this.
   # res_best <- res %>% slice_min(error_tst)
   res_cv_best <- res_tune_cv %>% slice_min(logloss_tst)
-  res_cv_best
+
+  .f <- function(x) {
+    res_cv_best %>% purrr::pluck(x)
+  }
   
   params_best <-
     list(
       booster = .booster,
       objective = .objective,
       eval_metric = .eval_metrics,
-      eta = res_cv_best %>% pluck('eta'),
-      gamma = res_cv_best %>% pluck('gamma'),
-      subsample = res_cv_best %>% pluck('subsample'),
-      colsample_bytree = res_cv_best %>% pluck('colsample_bytree'),
-      max_depth = res_cv_best %>% pluck('max_depth'),
-      min_child_weight = res_cv_best %>% pluck('min_child_weight')
+      eta = .f('eta'),
+      gamma = .f('gamma'),
+      subsample = .f('subsample'),
+      colsample_bytree = .f('colsample_bytree'),
+      max_depth = .f('max_depth'),
+      min_child_weight = .f('min_child_weight')
     )
   
-  if(!file.exists(path_fit)) {
+  if(!file.exists(path_fit) & !overwrite) {
     fit <- 
       xgboost::xgboost(
         params = params_best, 
@@ -2695,7 +2781,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
       ... =
     )
   
-  if(!file.exists(path_probs)) {
+  if(!file.exists(path_probs) & !overwrite) {
     # debugonce(.augment_catch_probs)
     probs <-
       fit %>% 
@@ -2705,4 +2791,166 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   } else {
     probs <- path_probs %>% arrow::read_parquet()
   }
+  invisible()
 }
+
+# `cnd` could be "all" or just "start"
+# `which` could be NA_character_ (for fully fit model) or "oob" (out-of-bag predictions)
+do_combine_target_probs_and_dists <- 
+  function(cnd = 'all',
+           which = NA_character_,
+           catch_probs = import_catch_probs(),
+           min_dists_naive = import_min_dists_naive(),
+           plays = import_plays(),
+           overwrite = FALSE,
+           path = .path_data_big_parquet('probs_dists'),
+           ...) {
+    
+    if(file.exists(path) & !overwrite) {
+      .display_info('Importing data from `path = "{path}"` and not re-generating.')
+      res <- path %>% arrow::read_parquet()
+      return(res)
+    }
+
+    catch_probs <- 
+      catch_probs %>% 
+      select(game_id, play_id, frame_id, nfl_id, catch_prob = .prob_1)
+    
+    # Get every combo of target probs requested.
+    probs <-
+      crossing(
+        cnd = cnd,
+        which = which
+      ) %>% 
+      mutate(
+        data = map2(cnd, which, import_target_probs)
+      ) %>% 
+      select(cnd, which, data) %>% 
+      unnest(data) %>% 
+      distinct() %>% 
+      select(-matches('^[.]prob_0'), -.prob_1, -.prob_class) %>% 
+      rename(prob = .prob_1_norm) %>% 
+      # Gonna make this simple and not include stuff without a target.
+      # filter(!is.na(target)) %>% 
+      left_join(catch_probs)
+    probs
+    
+    probs_grp <- 
+      probs %>% 
+      group_by(cnd, which, game_id, play_id, nfl_id)
+    
+    probs_start <-
+      probs_grp %>% 
+      slice_min(frame_id, with_ties = FALSE) %>% 
+      ungroup()
+    
+    probs_end <-
+      probs_grp %>%
+      slice_max(frame_id, with_ties = FALSE) %>%
+      ungroup()
+    
+    secs <-
+      full_join(
+        probs_start %>% distinct(game_id, play_id, frame_id_start = frame_id),
+        probs_end %>% distinct(game_id, play_id, frame_id_end = frame_id)
+      ) %>%
+      mutate(
+        frame_id_diff = frame_id_end - frame_id_start
+      )
+    
+    probs_aug <-
+      probs %>% 
+      # Drop the first frame
+      # anti_join(probs_start %>% select(which, game_id, play_id, nfl_id, frame_id)) %>% 
+      # Get the prob of the first frame
+      left_join(
+        probs_start %>% 
+          select(which, game_id, play_id, nfl_id, catch_prob, prob) %>% 
+          rename_with(~sprintf('%s_%s', .x, 'start'), -c(which, game_id, play_id, nfl_id))
+      ) %>% 
+      # Add how many frames are in the play
+      left_join(secs %>% select(game_id, play_id, frame_id_start, frame_id_diff)) %>% 
+      mutate(frame_id_frac = (frame_id - frame_id_start) / frame_id_diff)
+    probs_aug
+    rm('catch_probs', 'probs_grp', 'probs_start', 'probs_end', 'secs')
+    
+    # Could change this.
+    .power <- 2
+    ids <- probs_aug %>% distinct(game_id, play_id)
+    
+    min_dists_init <- 
+      import_min_dists_naive() %>%
+      semi_join(ids) %>% 
+      distinct(game_id, play_id, frame_id, nfl_id, nfl_id_d, dist_d)
+    min_dists_init
+    
+    # min_dists_init %>% filter(game_id == first(game_id), play_id == first(play_id), frame_id == first(frame_id))
+    min_dists <-
+      min_dists_init %>% 
+      group_by(game_id, play_id, frame_id, nfl_id_d) %>%
+      mutate(
+        dist_d_total = sum(1 / dist_d^.power),
+        wt = (1 / dist_d^.power) / dist_d_total
+      ) %>%
+      ungroup() %>% 
+      # filter(dist_d <= 20) %>% 
+      # Zero out some weights, per James' feedback.
+      mutate(across(wt, ~if_else(dist_d >= 20, 0, .x))) %>% 
+      select(-dist_d_total)
+    min_dists
+    
+    min_dists_start <-
+      min_dists %>% 
+      group_by(game_id, play_id, nfl_id, nfl_id_d) %>% 
+      slice_min(frame_id, with_ties = FALSE) %>% 
+      ungroup()
+    
+    min_dists_aug <-
+      min_dists %>% 
+      left_join(
+        min_dists_start %>% 
+          select(game_id, play_id, nfl_id, nfl_id_d, wt, dist_d) %>% 
+          rename_with(~sprintf('%s_%s', .x, 'start'), -c(game_id, play_id, nfl_id, nfl_id_d))
+      )
+    rm('min_dists', 'min_dists_init', 'min_dists_start')
+    rm('ids', 'probs')
+    
+    probs_dists <-
+      probs_aug %>%
+      inner_join(min_dists_aug) %>% 
+      arrange(game_id, play_id, frame_id, nfl_id) %>%
+      select(
+        which,
+        game_id,
+        play_id,
+        nfl_id,
+        nfl_id_d,
+        is_target,
+        frame_id,
+        frame_id_diff,
+        frame_id_frac,
+        matches('dist_d'),
+        matches('wt'),
+        matches('prob')
+      ) %>%
+      mutate(
+        across(is_target, binary_fct_to_lgl)
+      )
+    probs_dists %>% arrow::write_parquet(path)
+    probs_dists
+  }
+
+# eval functions ----
+import_nflfastr_db_groups <- memoise::memoise({function(seasons = 2018, positions = import_positions()) {
+  roster <- nflfastR::fast_scraper_roster(seasons = seasons)
+  # roster %>% filter(team == 'NE', position %in% c('SS', 'FS'))
+  roster %>% 
+    filter(position %in% c('CB', 'DB', 'S', 'FS', 'SS')) %>% 
+    select(display_name = full_name, team, position) %>% 
+    left_join(
+      positions %>% 
+        mutate(across(position_label, ~if_else(.x == 'DB', 'CB', .x))) %>% 
+        select(position, grp = position_label)
+      )
+}})
+
