@@ -5,17 +5,16 @@ tpoe <- file.path('data', 'target_prob', 'small', 'tpoe_player_rankings.csv') %>
 dpoe <- file.path('data', 'catch_prob', 'dpoe_arrival_player_rankings.csv') %>% readr::read_csv()
 roster <- nflfastR::fast_scraper_roster(seasons = 2018)
 roster %>% filter(team == 'NE', position %in% c('SS', 'FS'))
+db_grps <- import_nflfastr_db_groups()
 
 labels <-
   tpoe %>% 
   filter(grp %in% c('CB', 'S')) %>% 
   distinct(nfl_id, display_name, grp) %>% 
-  inner_join(
-    roster %>% 
-      filter(position %in% c('CB', 'DB', 'S', 'FS', 'SS')) %>% 
-      select(display_name = full_name, team, position)
-  )
-labels
+  group_by(nfl_id) %>% 
+  filter(row_number() == 1L) %>% 
+  ungroup()
+labels %>% filter(display_name == 'Isaiah Johnson') # count(nfl_id, display_name, grp)
 # roster %>% filter(team == 'NE', position %in% c('CB', 'DB'))
 # labels %>% filter(n > 1)
 xpoe <-
@@ -29,14 +28,14 @@ xpoe <-
   ) %>% 
   left_join(labels) %>% 
   filter(grp %in% c('CB', 'S')) %>% 
-  group_by(nfl_id, prefix) %>% 
-  filter(row_number(xpoe) == 1L) %>% 
-  ungroup() %>% 
+  # group_by(nfl_id, prefix) %>% 
+  # filter(row_number(xpoe) == 1L) %>% 
+  # ungroup() %>% 
   group_by(grp, prefix) %>% 
   mutate(grp_rnk = row_number(xpoe)) %>% 
   ungroup()
 xpoe
-
+xpoe %>% count(prefix, nfl_id, display_name) %>% filter(n > 1)
 xpoe_wide <-
   xpoe %>%
   pivot_wider(

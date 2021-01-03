@@ -635,8 +635,8 @@ animate_play <-
     
     if(team_colors) {
       
-      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color2)
-      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color)
+      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color)
+      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color2)
       if(play$possession_team == home_team) {
         offense_color <- home_color
         defense_color <- away_color
@@ -770,7 +770,7 @@ animate_play <-
         strip.background = ggplot2::element_rect(fill = NA),
         # strip.text = ggplot2::element_text()
         plot.caption = ggtext::element_markdown(
-          size = 14,
+          size = 12,
           hjust = 0,
           lineheight = 0
         ),
@@ -2951,6 +2951,11 @@ import_nflfastr_db_groups <- memoise::memoise({function(seasons = 2018, position
       positions %>% 
         mutate(across(position_label, ~if_else(.x == 'DB', 'CB', .x))) %>% 
         select(position, grp = position_label)
-      )
+    ) %>% 
+    group_by(display_name) %>% 
+    mutate(n = n()) %>% 
+    ungroup() %>% 
+    filter(n == 1L) %>% 
+    select(-n)
 }})
 
