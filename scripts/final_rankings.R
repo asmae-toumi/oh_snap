@@ -10,13 +10,9 @@ db_grps <- import_nflfastr_db_groups()
 labels <-
   tpoe %>% 
   filter(grp %in% c('CB', 'S')) %>% 
-  distinct(nfl_id, display_name, grp) %>% 
-  group_by(nfl_id) %>% 
-  filter(row_number() == 1L) %>% 
-  ungroup()
-labels %>% filter(display_name == 'Isaiah Johnson') # count(nfl_id, display_name, grp)
-# roster %>% filter(team == 'NE', position %in% c('CB', 'DB'))
-# labels %>% filter(n > 1)
+  distinct(nfl_id, display_name, grp, team)
+labels
+
 xpoe <-
   bind_rows(
     tpoe %>%
@@ -28,14 +24,11 @@ xpoe <-
   ) %>% 
   left_join(labels) %>% 
   filter(grp %in% c('CB', 'S')) %>% 
-  # group_by(nfl_id, prefix) %>% 
-  # filter(row_number(xpoe) == 1L) %>% 
-  # ungroup() %>% 
   group_by(grp, prefix) %>% 
   mutate(grp_rnk = row_number(xpoe)) %>% 
   ungroup()
 xpoe
-xpoe %>% count(prefix, nfl_id, display_name) %>% filter(n > 1)
+
 xpoe_wide <-
   xpoe %>%
   pivot_wider(
@@ -71,10 +64,10 @@ tb <-
         # display_name = gt::md('**Name (Team)**'),
         # team = gt::md('**Team**'),
         # grp = gt::md('**Group**'),
-        xpoe_t = gt::md('**TPOE**'),
-        xpoe_d = gt::md('**DPOE**'),
-        grp_rnk_t = gt::md('**TPOE Rank**'),
-        grp_rnk_d = gt::md('**DPOE Rank**'),
+        xpoe_t = gt::md('**dTPOE**'),
+        xpoe_d = gt::md('**dCPOE**'),
+        grp_rnk_t = gt::md('**dTPOE Rank**'),
+        grp_rnk_d = gt::md('**dCPOE Rank**'),
         grp_rnk = gt::md('**Overall Rank**')
       )
   ) %>% 

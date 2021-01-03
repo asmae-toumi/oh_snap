@@ -1,1 +1,130 @@
-["{\"learner\":{\"generic_param\":{\"enable_experimental_json_serialization\":\"0\",\"gpu_id\":\"-1\",\"gpu_page_size\":\"0\",\"n_gpus\":\"0\",\"n_jobs\":\"0\",\"nthread\":\"0\",\"random_state\":\"0\",\"seed\":\"0\",\"seed_per_iteration\":\"0\",\"validate_parameters\":\"1\"},\"gradient_booster\":{\"gbtree_train_param\":{\"num_parallel_tree\":\"1\",\"predictor\":\"auto\",\"process_type\":\"default\",\"tree_method\":\"exact\",\"updater\":\"grow_colmaker,prune\",\"updater_seq\":\"grow_colmaker,prune\"},\"name\":\"gbtree\",\"specified_updater\":false,\"updater\":{\"grow_colmaker\":{\"colmaker_train_param\":{\"opt_dense_col\":\"1\"},\"train_param\":{\"alpha\":\"0\",\"cache_opt\":\"1\",\"colsample_bylevel\":\"1\",\"colsample_bynode\":\"1\",\"colsample_bytree\":\"0.5\",\"default_direction\":\"learn\",\"enable_feature_grouping\":\"0\",\"eta\":\"0.0549999997\",\"gamma\":\"7.93202344e-05\",\"grow_policy\":\"depthwise\",\"interaction_constraints\":\"\",\"lambda\":\"1\",\"learning_rate\":\"0.0549999997\",\"max_bin\":\"256\",\"max_conflict_rate\":\"0\",\"max_delta_step\":\"0\",\"max_depth\":\"7\",\"max_leaves\":\"0\",\"max_search_group\":\"100\",\"min_child_weight\":\"12\",\"min_split_loss\":\"7.93202344e-05\",\"monotone_constraints\":\"()\",\"refresh_leaf\":\"1\",\"reg_alpha\":\"0\",\"reg_lambda\":\"1\",\"sampling_method\":\"uniform\",\"sketch_eps\":\"0.0299999993\",\"sketch_ratio\":\"2\",\"sparse_threshold\":\"0.20000000000000001\",\"split_evaluator\":\"elastic_net,monotonic\",\"subsample\":\"0.612764776\"}},\"prune\":{\"train_param\":{\"alpha\":\"0\",\"cache_opt\":\"1\",\"colsample_bylevel\":\"1\",\"colsample_bynode\":\"1\",\"colsample_bytree\":\"0.5\",\"default_direction\":\"learn\",\"enable_feature_grouping\":\"0\",\"eta\":\"0.0549999997\",\"gamma\":\"7.93202344e-05\",\"grow_policy\":\"depthwise\",\"interaction_constraints\":\"\",\"lambda\":\"1\",\"learning_rate\":\"0.0549999997\",\"max_bin\":\"256\",\"max_conflict_rate\":\"0\",\"max_delta_step\":\"0\",\"max_depth\":\"7\",\"max_leaves\":\"0\",\"max_search_group\":\"100\",\"min_child_weight\":\"12\",\"min_split_loss\":\"7.93202344e-05\",\"monotone_constraints\":\"()\",\"refresh_leaf\":\"1\",\"reg_alpha\":\"0\",\"reg_lambda\":\"1\",\"sampling_method\":\"uniform\",\"sketch_eps\":\"0.0299999993\",\"sketch_ratio\":\"2\",\"sparse_threshold\":\"0.20000000000000001\",\"split_evaluator\":\"elastic_net,monotonic\",\"subsample\":\"0.612764776\"}}}},\"learner_model_param\":{\"base_score\":\"5E-1\",\"num_class\":\"0\",\"num_feature\":\"18\"},\"learner_train_param\":{\"booster\":\"gbtree\",\"disable_default_eval_metric\":\"0\",\"dsplit\":\"auto\",\"objective\":\"binary:logistic\"},\"metrics\":[\"logloss\"],\"objective\":{\"name\":\"binary:logistic\",\"reg_loss_param\":{\"scale_pos_weight\":\"1\"}}},\"version\":[1,2,0]}"]
+﻿[
+  {
+    "learner": {
+      "generic_param": {
+        "enable_experimental_json_serialization": "0",
+        "gpu_id": "-1",
+        "gpu_page_size": "0",
+        "n_gpus": "0",
+        "n_jobs": "0",
+        "nthread": "0",
+        "random_state": "0",
+        "seed": "0",
+        "seed_per_iteration": "0",
+        "validate_parameters": "1"
+      },
+      "gradient_booster": {
+        "gbtree_train_param": {
+          "num_parallel_tree": "1",
+          "predictor": "auto",
+          "process_type": "default",
+          "tree_method": "exact",
+          "updater": "grow_colmaker,prune",
+          "updater_seq": "grow_colmaker,prune"
+        },
+        "name": "gbtree",
+        "specified_updater": false,
+        "updater": {
+          "grow_colmaker": {
+            "colmaker_train_param": {
+              "opt_dense_col": "1"
+            },
+            "train_param": {
+              "alpha": "0",
+              "cache_opt": "1",
+              "colsample_bylevel": "1",
+              "colsample_bynode": "1",
+              "colsample_bytree": "0.5",
+              "default_direction": "learn",
+              "enable_feature_grouping": "0",
+              "eta": "0.0549999997",
+              "gamma": "7.93202344e-05",
+              "grow_policy": "depthwise",
+              "interaction_constraints": "",
+              "lambda": "1",
+              "learning_rate": "0.0549999997",
+              "max_bin": "256",
+              "max_conflict_rate": "0",
+              "max_delta_step": "0",
+              "max_depth": "7",
+              "max_leaves": "0",
+              "max_search_group": "100",
+              "min_child_weight": "12",
+              "min_split_loss": "7.93202344e-05",
+              "monotone_constraints": "()",
+              "refresh_leaf": "1",
+              "reg_alpha": "0",
+              "reg_lambda": "1",
+              "sampling_method": "uniform",
+              "sketch_eps": "0.0299999993",
+              "sketch_ratio": "2",
+              "sparse_threshold": "0.20000000000000001",
+              "split_evaluator": "elastic_net,monotonic",
+              "subsample": "0.612764776"
+            }
+          },
+          "prune": {
+            "train_param": {
+              "alpha": "0",
+              "cache_opt": "1",
+              "colsample_bylevel": "1",
+              "colsample_bynode": "1",
+              "colsample_bytree": "0.5",
+              "default_direction": "learn",
+              "enable_feature_grouping": "0",
+              "eta": "0.0549999997",
+              "gamma": "7.93202344e-05",
+              "grow_policy": "depthwise",
+              "interaction_constraints": "",
+              "lambda": "1",
+              "learning_rate": "0.0549999997",
+              "max_bin": "256",
+              "max_conflict_rate": "0",
+              "max_delta_step": "0",
+              "max_depth": "7",
+              "max_leaves": "0",
+              "max_search_group": "100",
+              "min_child_weight": "12",
+              "min_split_loss": "7.93202344e-05",
+              "monotone_constraints": "()",
+              "refresh_leaf": "1",
+              "reg_alpha": "0",
+              "reg_lambda": "1",
+              "sampling_method": "uniform",
+              "sketch_eps": "0.0299999993",
+              "sketch_ratio": "2",
+              "sparse_threshold": "0.20000000000000001",
+              "split_evaluator": "elastic_net,monotonic",
+              "subsample": "0.612764776"
+            }
+          }
+        }
+      },
+      "learner_model_param": {
+        "base_score": "5E-1",
+        "num_class": "0",
+        "num_feature": "18"
+      },
+      "learner_train_param": {
+        "booster": "gbtree",
+        "disable_default_eval_metric": "0",
+        "dsplit": "auto",
+        "objective": "binary:logistic"
+      },
+      "metrics": [
+        "logloss"
+      ],
+      "objective": {
+        "name": "binary:logistic",
+        "reg_loss_param": {
+          "scale_pos_weight": "1"
+        }
+      }
+    },
+    "version": [
+      1,
+      2,
+      0
+    ]
+  }
+]

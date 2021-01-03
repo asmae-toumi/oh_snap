@@ -8,7 +8,7 @@ personnel_and_rushers <-
   weeks %>%
   do_by_week(
     f = do_identify_personnel_and_rushers, 
-    overwrite = TRUE,
+    # overwrite = TRUE,
     path = .path_data_big('personnel_and_rushers', ext = 'rds')
   )
 
@@ -36,7 +36,7 @@ features <-
     path = .path_data_big_parquet('target_prob_features_all')
   )
 
-# hot fix for bad plays. should add logic to `do_generate_features_at_events` for this
+# Hot fix for bad plays. should add logic to `do_generate_features_at_events` for this
 import_target_prob_features(suffix = 'all') %>% 
   distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
   group_by(game_id, play_id, frame_id) %>% 
@@ -88,87 +88,6 @@ probs_dists_end <-
   slice_max(frame_id, with_ties = FALSE) %>%
   ungroup()
 
-# diffs_by_play_cont <-
-#   probs_dists %>%
-#   group_by(which, game_id, play_id, nfl_id, nfl_id_d) %>%
-#   mutate(across(frame_id_frac, ~.x / sum(.x))) %>%
-#   ungroup() %>%
-#   group_by(
-#     which,
-#     game_id,
-#     play_id,
-#     is_target,
-#     nfl_id = nfl_id_d
-#   ) %>%
-#   summarize(
-#     across(c(matches('^prob')), ~sum(.x * frame_id_frac, na.rm = TRUE))
-#   ) %>%
-#   ungroup()
-# 
-# diffs_by_play_minmax <-
-#   probs_dists %>%
-#   # head(1000) %>% 
-#   group_by(which, game_id, play_id, nfl_id, nfl_id_d) %>%
-#   arrange(frame_id, .by_group = TRUE) %>% 
-#   mutate(across(prob_diff_wt, ~slider::slide_dbl(.x, mean, .before = 10, .complete = FALSE))) %>% 
-#   # mutate(across(frame_id_frac, ~.x / sum(.x))) %>%
-#   ungroup() %>%
-#   group_by(
-#     which,
-#     game_id,
-#     play_id,
-#     is_target,
-#     nfl_id,
-#     nfl_id_d
-#   ) %>% 
-#   summarize(
-#     across(c(prob_diff_wt), list(min = min, max = max), na.rm = TRUE)
-#   ) %>%
-#   ungroup() %>% 
-#   mutate(prob_diff_wt_ma = prob_diff_wt_max + prob_diff_wt_min) %>% 
-#   group_by(
-#     which,
-#     game_id,
-#     play_id,
-#     is_target,
-#     nfl_id = nfl_id_d
-#   ) %>% 
-#   summarize(
-#     # n_receiver = n(),
-#     # across(c(matches('^prob')), ~sum(.x / n_receiver, na.rm = TRUE))
-#     across(c(matches('^prob')), ~sum(.x, na.rm = TRUE))
-#   ) %>%
-#   ungroup() 
-# 
-# diffs_by_play_minmax <-
-#   probs_dists %>%
-#   group_by(
-#     which,
-#     game_id,
-#     play_id,
-#     is_target,
-#     nfl_id,
-#     nfl_id_d
-#   ) %>% 
-#   summarize(
-#     across(prob_diff_wt, list(min = min, max = max), na.rm = TRUE)
-#   ) %>%
-#   ungroup() %>% 
-#   mutate(prob_diff_wt_ma = prob_diff_wt_max + prob_diff_wt_min) %>% 
-#   group_by(
-#     which,
-#     game_id,
-#     play_id,
-#     is_target,
-#     nfl_id = nfl_id_d
-#   ) %>% 
-#   summarize(
-#     # n_receiver = n(),
-#     # across(c(matches('^prob')), ~sum(.x / n_receiver, na.rm = TRUE))
-#     across(c(matches('^prob')), ~sum(.x, na.rm = TRUE))
-#   ) %>%
-#   ungroup() 
-
 diffs_by_play <-
   probs_dists_end %>%
   group_by(
@@ -179,51 +98,10 @@ diffs_by_play <-
     nfl_id = nfl_id_d
   ) %>% 
   summarize(
-    across(c(matches('^prob')), sum, na.rm = TRUE)
+    across(prob_diff_wt, sum, na.rm = TRUE)
   ) %>%
-  ungroup() # %>% 
-  # left_join(diffs_by_play_cont %>% select(which, game_id, play_id, nfl_id, prob_diff_twt = prob_diff_wt))
-  # left_join(diffs_by_play_minmax)
+  ungroup()
 diffs_by_play
-
-# diffs_by_play %>% 
-#   select(matches('^prob_diff_')) %>% 
-#   corrr::correlate()
-
-# diffs_by_play %>% 
-#   filter(nfl_id == 2539653) %>% 
-#   mutate(diff_abs = abs(prob_diff_wt - prob_diff_wt_ma)) %>% 
-#   arrange(-diff_abs)
-# 
-# diffs_by_play %>% 
-#   filter(nfl_id == 2539653) %>% 
-#   arrange(prob_diff_wt) %>% 
-#   ggplot() +
-#   aes(x = prob_diff_wt_ma) +
-#   geom_histogram(aes(fill = is_target)) +
-#   facet_wrap(~is_target)
-
-.filter_example <- function(data) {
-  data %>% 
-    filter(which %>% is.na(), game_id == !!game_id_example, play_id == !!play_id_example)
-}
-
-diffs_by_play %>% 
-  .filter_example() %>% 
-  # filter(nfl_id == !!nfl_id_example)
-  inner_join(players_from_tracking %>% select(game_id, play_id, nfl_id, display_name))
-
-diffs_by_play_cont %>% 
-  .filter_example() %>% 
-  filter(nfl_id == !!nfl_id_example) %>% 
-  arrange(prob_diff_wt)
-# Harmon is 2541243
-diffs_by_play %>% 
-  .filter_example() %>% 
-  filter(nfl_id == 2541243)
-diffs_by_play %>% 
-  group_by(is_target) %>% 
-  summarize(across(prob_diff_wt, list(mean = mean, p90 = ~quantile(.x, 0.1))))
 
 # Do this on-demand/ad-hoc
 if(FALSE) {
@@ -248,8 +126,8 @@ if(FALSE) {
     head(20)
   
 # Play chosen based on above criteria. It also happens to be interesting cuz of the blitz component.
-game_id_example <- 2018112505 # 2018120212
-play_id_example <- 2716 # 536
+game_id_example <- 2018112505
+play_id_example <- 2716
 animate_play(
   game_id = game_id_example, 
   play_id = play_id_example, 
@@ -293,7 +171,6 @@ prob_dists_example <-
       )
   )
 
-# TODO: Put this on a separate plot, then bind with patchwork
 generic_traces_example <-
   prob_dists_example %>% 
   filter(name %in% c('cp', 'tp')) %>% 
@@ -432,7 +309,6 @@ diffs_by_player <-
       select(game_id, play_id, nfl_id, display_name) 
   ) %>%
   inner_join(db_grps) %>% 
-  # filter(display_name == 'Marcus Williams')
   group_by(which, is_target, nfl_id, grp, display_name) %>%
   summarize(
     n = n(),
@@ -447,17 +323,6 @@ diffs_by_player <-
   rename(tpoe = prob_diff_wt_sum) %>% 
   left_join(db_grps) %>% 
   arrange(grp, is_target, rnk_grp)
-
-# diffs_by_player %>% 
-#   select(is_target, matches('^rnk_grp')) %>% 
-#   nest(data = -c(is_target)) %>% 
-#   mutate(
-#     res = map(data, ~corrr::correlate(.x, method = 'spearman', ))
-#   ) %>% 
-#   select(is_target, res) %>% 
-#   unnest(res) %>% 
-#   filter(!is.na(rnk_grp)) %>% 
-#   select(is_target, cor = rnk_grp)
 
 diffs_by_player_wide <-
   diffs_by_player %>% 
@@ -497,12 +362,6 @@ defenders_top_pff <-
   mutate(rnk_pff = row_number())
 
 diffs_by_player_wide %>% 
-  # filter(grp %in% c('CB')) %>%
   inner_join(defenders_top_pff)
 
-# diffs_by_player_wide %>% 
-#   ggplot() +
-#   aes(x = tpoe_not_target, y = tpoe_target) +
-#   geom_point(aes(color = grp, size = n))
-# diffs_by_player_wide %>% filter(grp == 'CB')
 write_csv(diffs_by_player_wide, .path_data_small_csv('tpoe_player_rankings'), na = '')
