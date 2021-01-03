@@ -1,10 +1,12 @@
 
 
 library(tidyverse)
+source('scripts/gg_field.R')
 
 ggplot2::theme_set(hrbrthemes::theme_ipsum(base_family = '', base_size = 14))
 ggplot2::theme_update(
   plot.title = ggplot2::element_text(size = 18),
+  plot.subtitle = ggplot2::element_text(size = 14),
   plot.title.position = 'plot',
   axis.text = ggplot2::element_text(size = 14),
   axis.title = ggplot2::element_text(size = 14),
@@ -26,7 +28,7 @@ ggplot2::theme_update(
 .path_data_big <- partial(.path_x, dir = file.path('data', 'target_prob', 'big'), ... = )
 .path_data_small <- partial(.path_x, dir = file.path('data', 'target_prob', 'small'), ... = )
 .path_data_in_csv <- partial(.path_data_in, ext = 'csv', ... = )
-.path_data_small_csv <- partial(.path_data_big, ext = 'csv', ... = )
+.path_data_small_csv <- partial(.path_data_small, ext = 'csv', ... = )
 .path_data_big_parquet <- partial(.path_data_big, ext = 'parquet', ... = )
 .path_figs <- partial(.path_x, dir = file.path('figs', 'target_prob'), ... = )
 .path_figs_png <- partial(.path_figs, ext = 'png', ... = )
@@ -360,45 +362,6 @@ clip_tracking_at_events <-
       dplyr::select(-.data$group)
   }
 
-
-# prep_do_by_week <- function(week = 1L, n_halfseconds = 7L, at = 'throw', ..., .msg = 'Doing thing') {
-#   
-#   .display_info('{.msg} for week {week} at {Sys.time()}.')
-#   
-#   tracking <- week %>% import_tracking()
-#   # tracking <- tracking %>% bdb2021::add_side_cols()
-#   
-#   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)
-#   
-#   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
-#   
-#   snap_frame_ids <- 
-#     snap_frames %>% 
-#     dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id)
-#   
-#   frames <-
-#     snap_frame_ids %>%
-#     # Only need up to 0.5 * `n_nalfseconds` seconds (e.g. 0, 0.5, 1, ..., 3.5 if `n_halfseconds = 7L`).
-#     dplyr::mutate(n = !!n_halfseconds) %>%
-#     tidyr::uncount(.data$n) %>%
-#     dplyr::group_by(.data$game_id, .data$play_id) %>%
-#     # Create half seconds.
-#     dplyr::mutate(
-#       sec = 0.5 * (dplyr::row_number() - 1L)
-#     ) %>%
-#     dplyr::ungroup() %>%
-#     # Technically this should be an integer, but we don't really need to coerce it.
-#     dplyr::mutate(
-#       frame_id = .data$frame_id + .data$sec * 10,
-#     ) %>%
-#     dplyr::inner_join(
-#       tracking_clipped %>%
-#         dplyr::select(-.data$event),
-#       by = c('frame_id', 'game_id', 'play_id')
-#     )
-#   frames
-# }
-
 do_by_week <- 
   function(weeks = 1L,
            f,
@@ -437,7 +400,7 @@ save_animation <-
            end_pause = fps,
            file = deparse(substitute(anim)),
            ext = 'gif',
-           dir = get_ohsnap_dir_figs(),
+           dir = file.path('figs', 'target_prob'),
            path = file.path(dir, sprintf('%s.%s', file, ext)),
            renderer = gganimate::gifski_renderer(path),
            ...) {
@@ -454,6 +417,15 @@ save_animation <-
       )
   }
 
+pts <- function(x) {
+  as.numeric(grid::convertUnit(grid::unit(x, "pt"), "mm"))
+}
+
+.round_any <- function(x, accuracy, f = round) {
+  f(x / accuracy) * accuracy
+}
+
+
 animate_play <-
   function(game_id = 2018090600,
            play_id = 75,
@@ -462,24 +434,26 @@ animate_play <-
            positions = import_positions(),
            week = NULL,
            tracking = NULL,
-           team_colors = FALSE,
+           team_colors = TRUE,
            yardmin = NULL,
            yardmax = NULL,
-           field_color = '#b3e3d6',
+           # field_color = '#b3e3d6',
+           field_color = 'white',
            line_color = 'black',
            sideline_color = 'white',
            endzone_color = NULL,
            buffer = NULL,
+           colors = import_colors(),
            cnd = 'all',
            which = NA_character_,
            target_prob = TRUE,
            personnel_and_rushers = import_personnel_and_rushers(),
            target_probs = import_target_probs(cnd = cnd, which = which),
            clip = TRUE,
-           at = 'end_routes', # .get_valid_at_events(),
+           at = 'end_routes',
            init_cnd = dplyr::quos(.data$frame_id == 1L),
            save = TRUE,
-           dir = get_ohsnap_dir_figs(),
+           dir = file.path('figs', 'target_prob'),
            ext = 'gif',
            filename = sprintf('%s-%s.%s', game_id, play_id, ext),
            path = file.path(dir, filename),
@@ -487,7 +461,9 @@ animate_play <-
            ext_tp = 'gif',
            filename_tp = sprintf('%s-%s-tp.%s', game_id, play_id, ext_tp),
            path_tp = file.path(dir_tp, filename_tp),
+           title = NULL,
            subtitle = NULL,
+           caption = NULL,
            # width = 10,
            # height = 10,
            end_pause = 1,
@@ -569,6 +545,7 @@ animate_play <-
       probs <-
         target_probs %>% 
         dplyr::semi_join(meta, by = c('game_id', 'play_id'))
+      
       if(nrow(probs) >= 0) {
         probs <-
           probs %>% 
@@ -579,7 +556,7 @@ animate_play <-
       }
     }
     
-    # This is also being clipped, but later than how min distance and target prob is clipped.
+    # This is also being clipped, but later than how target prob is clipped.
     if(clip) {
       tracking <-
         tracking %>%
@@ -657,8 +634,8 @@ animate_play <-
     
     if(team_colors) {
       
-      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color)
-      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color2)
+      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color2)
+      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color)
       if(play$possession_team == home_team) {
         offense_color <- home_color
         defense_color <- away_color
@@ -782,6 +759,8 @@ animate_play <-
       ggplot2::scale_color_manual(values = c('O' = offense_color, 'D' = defense_color))
     
     # Theme stuff
+    title <- ifelse(is.null(title), glue::glue("<b><span style='color:{away_color};'>{away_team}</span></b> @ <b><span style='color:{home_color};'>{home_team}</span></b>, Week {week}"), title)
+    caption <- ifelse(is.null(caption), glue::glue('Q{play$quarter}: {play$play_description}'), caption)
     p <-
       p +
       ggplot2::theme(
@@ -790,7 +769,7 @@ animate_play <-
         strip.background = ggplot2::element_rect(fill = NA),
         # strip.text = ggplot2::element_text()
         plot.caption = ggtext::element_markdown(
-          # size = 12,
+          size = 14,
           hjust = 0,
           lineheight = 0
         ),
@@ -798,8 +777,8 @@ animate_play <-
       ) +
       ggplot2::labs(
         subtitle = subtitle,
-        title = glue::glue("<b><span style='color:{away_color};'>{away_team}</span></b> @ <b><span style='color:{home_color};'>{home_team}</span></b>, Week {week}"),
-        caption = glue::glue('Q{play$quarter}: {play$play_description}'),
+        title = title,
+        caption = caption,
         x = NULL, y = NULL
       )
     
@@ -847,7 +826,8 @@ animate_play <-
           data = tibble(x = !!frame_snap),
           aes(xintercept = .data$x)
         ) +
-        geom_line(aes(group = lab), size = 1) +
+        geom_line(aes(group = lab), size = 1.25) +
+        geom_text(aes(label = lab), size = pts(14), vjust = 1, hjust = 1) +
         scico::scale_color_scico_d(palette = 'berlin') +
         # guides(color = FALSE) +
         guides(color = guide_legend(title = '', nrow = 2, override.aes = list(size = 3))) +
@@ -865,8 +845,9 @@ animate_play <-
         ) +
         labs(
           title = 'Target probability',
-          x = NULL, y = NULL
+          x = 'frame', y = NULL
         )
+      p_tp
     }
     
     seconds <- ball %>% nrow() %>% {. / 10}
@@ -894,20 +875,22 @@ animate_play <-
     
     if(target_prob) {
       anim_tp <- p_tp + gganimate::transition_reveal(.data$frame_id)
+      seconds_tp <- frame_ids %>% length() %>% {. / 10}
+      end_pause_tp <- end_pause + (seconds - seconds_tp)
+      nframe_tp <- (seconds_tp + end_pause_tp) * fps
       res_tp <- 
         save_animation(
           anim_tp,
-          nframe = nframe,
+          nframe = nframe_tp,
           fps = fps,
           height = height_tp,
           width = width_tp,
           path = path_tp,
           renderer = gganimate::gifski_renderer(file = path_tp),
-          end_pause = end_pause * fps
+          end_pause = end_pause_tp * fps
         )
     }
-    
-    res
+    invisible()
   }
 
 # 1. functions to generate data for features ----
@@ -1114,7 +1097,7 @@ do_generate_features_at_events <-
   function(week = 1L,
            all = TRUE,
            path = .path_data_big_parquet_week(sprintf('target_prob_features_%s', ifelse(all, 'all', 'minmax')), week),
-           path_min_dists_target = .path_data_big_parquet_week(sprintf('min_dists_naive_target_%s', ifelse(all, 'all', 'minmax')), week),
+           path_min_dists = .path_data_big_parquet_week(sprintf('min_dists_naive_%s', ifelse(all, 'all', 'minmax')), week),
            overwrite = FALSE, 
            plays = import_plays(),
            targets = import_targets(plays = plays),
@@ -1127,7 +1110,7 @@ do_generate_features_at_events <-
       return(res)
     }
     
-    .display_info('Processing week {week} at {Sys.time()}.')
+    .display_info('Processing week {week} at {Sys.time()} Min dists are also being generated and will need to be re-combined manually aftwards.')
     tracking <- week %>% import_tracking(standardize = FALSE)
     
     tracking <-
@@ -1333,11 +1316,11 @@ do_generate_features_at_events <-
     
     if(TRUE) {
 
-      min_dists_naive_d_target <-
-        frames_target %>%
+      min_dists_naive <-
+        frames_o %>%
         # dplyr::filter(is_target == 1L) %>%
         dplyr::left_join(
-          frames_o,
+          frames_target,
           by = c('game_id', 'play_id', 'nfl_id')
         ) %>%
         dplyr::left_join(
@@ -1359,7 +1342,7 @@ do_generate_features_at_events <-
           .data$dist_d
         )
       
-      min_dists_naive_d_target %>% arrow::write_parquet(path_min_dists_target)
+      min_dists_naive %>% arrow::write_parquet(path_min_dists)
     }
 
     res <-
@@ -1428,8 +1411,8 @@ do_generate_features_at_events <-
     res
   }
 
-import_min_dists_naive_target <- function() {
-  .path_data_big_parquet('min_dists_naive_target_all') %>%
+import_min_dists_naive <- function() {
+  .path_data_big_parquet('min_dists_naive_all') %>%
     arrow::read_parquet() 
 }
 
@@ -1441,10 +1424,10 @@ import_routes <- function() {
 import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = import_routes()) {
   .path_data_big_parquet(sprintf('target_prob_features_%s', suffix)) %>% 
     arrow::read_parquet() %>% 
-    dplyr::left_join(
-      routes %>% dplyr::select(-.data$week),
-      by = c('game_id', 'play_id', 'nfl_id')
-    ) %>% 
+    # dplyr::left_join(
+    #   routes %>% dplyr::select(-.data$week),
+    #   by = c('game_id', 'play_id', 'nfl_id')
+    # ) %>% 
     dplyr::filter(!is.na(route))
 }
 
@@ -1463,7 +1446,8 @@ import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = im
           game_id, 
           play_id, 
           nfl_id, 
-          frame_id, 
+          frame_id,
+          idx_o,
           !!col_y
         )
     ) %>% 
@@ -1474,7 +1458,8 @@ import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = im
           game_id,
           play_id,
           nfl_id,
-          frame_id
+          frame_id,
+          idx_o
         )
     )
   
@@ -1488,13 +1473,14 @@ import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = im
     dplyr::group_by(game_id, play_id, frame_id) %>% 
     dplyr::mutate(dplyr::across(.prob_1, list(norm = ~ .x / sum(.x)))) %>%
     dplyr::ungroup() %>%
-    dplyr::mutate(.prob_0_norm = 1 - .prob_1_norm) %>%
+    # dplyr::mutate(.prob_0_norm = 1 - .prob_1_norm) %>%
     dplyr::select(
       idx,
       game_id,
       play_id,
       frame_id,
       dplyr::matches('nfl_id'),
+      idx_o,
       !!col_y_sym,
       dplyr::matches('prob_0'),
       dplyr::matches('prob_1')
@@ -1541,22 +1527,22 @@ mse_vec <- function(truth, estimate, na_rm = TRUE, ...) {
     truth = truth, 
     estimate = estimate,
     na_rm = na_rm,
-    cls = "numeric",
+    cls = 'numeric',
     ...
   )
   
 }
 
 mse <- function(data, ...) {
-  UseMethod("mse")
+  UseMethod('mse')
 }
 
-mse <- yardstick::new_numeric_metric(mse, direction = "minimize")
+mse <- yardstick::new_numeric_metric(mse, direction = 'minimize')
 
 mse.data.frame <- function(data, truth, estimate, na_rm = TRUE, ...) {
   
   yardstick::metric_summarizer(
-    metric_nm = "mse",
+    metric_nm = 'mse',
     metric_fn = mse_vec,
     data = data,
     truth = !! rlang::enquo(truth),
@@ -1575,9 +1561,27 @@ import_target_probs <- function(cnd = 'all', which = c(NA_character_, 'oob')) {
     arrow::read_parquet() 
 }
 
+import_catch_probs <- function(cnd = 'all') {
+  .path_data_big_parquet(
+    sprintf('probs_catch_prob_%s', cnd)
+  ) %>%
+    arrow::read_parquet() 
+}
+
 binary_fct_to_int <- function(x) {
   x %>% as.integer() %>% {. - 1L}
 }
+
+binary_fct_to_lgl <- function(x) {
+  x %>% binary_fct_to_int() %>% as.logical() 
+}
+
+.get_feature_labs <- memoise::memoise({function() {
+  tibble(
+      feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
+      feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball closest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
+    )
+}})
 
 do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   
@@ -1590,6 +1594,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   features <- 
     import_target_prob_features(suffix = .suffix) %>%
     dplyr::semi_join(plays %>% dplyr::select(game_id, play_id), by = c('game_id', 'play_id')) %>% 
+    distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
     dplyr::mutate(idx = dplyr::row_number()) %>% 
     dplyr::relocate(idx)
   
@@ -1600,20 +1605,23 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   if (cnd == 'start') {
     extra_features <- NULL
     features_x <- features_start
-    subtitle <- 'At the snap'
+    caption <- NULL
   } else if(cnd == 'end') {
     extra_features <- 'sec'
     features_x <- 
       features %>% 
       dplyr::filter(event != 'ball_snap')
     
-    subtitle <- 'At the throw'
+    caption <- NULL
   } else if(cnd == 'all') {
     extra_features <- 'sec'
     set.seed(42)
     # Data is too large to tune on everything
     features_x <- features %>% dplyr::sample_frac(0.1)
-    subtitle <- 'All frames between snap and throw'
+    caption <- glue::glue(
+      'Relative target share rank, receiver position, QB orientation, and various distance-based features 
+                             are most important for predicting which receiver will be targeted at any point after the snap.'
+    )
   }
   suffix <- cnd
   
@@ -1632,6 +1640,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   
   path_res_tune_cv <- .path_data_big_x('res_tune_cv', ext = 'rds')
   path_fit <- .path_data_small_x('fit')
+  path_fit_config <- .path_data_small_x('fit_config')
   path_res_cv <- .path_data_big_parquet_x('res_cv')
   path_probs <- .path_data_big_parquet_x('probs')
   path_probs_oob <- .path_data_big_parquet_x('probs_oob')
@@ -1639,7 +1648,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   
   path_roc_curve <- .path_figs_png_x('viz_roc_curve')
   path_roc_curve_compare <- .path_figs_png_x('viz_roc_curve_compare')
-  # path_shap_swarm <- .path_figs_png_x('viz_shap_swarm')
+  path_shap_swarm <- .path_figs_png_x('viz_shap_swarm')
   path_shap_agg <- .path_figs_png_x('viz_shap_agg')
   
   path_metrics <- .path_data_small_x('metrics', ext = 'csv')
@@ -1752,7 +1761,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       function(data,
                row = 1,
                path = .path_data_big(sprintf('res_tune_cv_target_prob_%02d', row), ext = 'rds'),
-               overwrite = FALSE) {
+               overwrite = TRUE) {
         # row = 1; data <- grid_params %>% slice(row)
         
         path_exists <- path %>% file.exists()
@@ -1809,6 +1818,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   
   # 19th
   # These can be used in the next 2 ifelse clauses. Easiest to just always run this.
+  # res_tune_cv %>% mutate(idx = row_number()) %>% relocate(idx) %>% dplyr::slice_min(logloss_tst)
   res_cv_best <- res_tune_cv %>% dplyr::slice_min(logloss_tst)
   
   .f <- function(x) {
@@ -1886,6 +1896,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
         verbose = 2
       )
     xgboost::xgb.save(fit, path_fit)
+    xgboost::xgb.config(fit) %>% jsonlite::write_json(path_fit_config)
   } else {
     fit <- xgboost::xgb.load(path_fit)
   }
@@ -1921,7 +1932,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
         nrounds = .nrounds,
         folds = folds, 
         metrics = .eval_metrics,
-        early_stopping_rounds = 10,
+        early_stopping_rounds = 20, # was stopping early at 10
         print_every_n = 10
       )
     
@@ -1941,59 +1952,59 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
   }
   
   col_y_sym <- cols_lst$col_y %>% dplyr::sym()
-  if(!file.exists(path_roc_curve) | !file.exists(path_roc_curve_compare)) {
-    
-    roc_curve <-
-      dplyr::bind_rows(
-        probs %>% 
-          yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
-          dplyr::mutate(set = 'Full data'),
-        probs_oob %>% 
-          yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
-          dplyr::mutate(set = 'Out-of-bag')
-      )
-    
-    viz_roc_curve <-
-      roc_curve %>% 
-      dplyr::filter(set == 'Full data') %>% 
-      ggplot2::ggplot() +
-      ggplot2::aes(x = 1 - specificity, y = sensitivity) +
-      ggplot2::geom_path(size = 1) +
-      ggplot2::geom_abline(size = 1, lty = 2) +
-      ggplot2::coord_equal() +
-      ggplot2::labs(
-        title = 'Target probability ROC Curve',
-        subtitle = subtitle
-      )
-    
-    viz_roc_curve_compare <-
-      roc_curve %>% 
-      ggplot2::ggplot() +
-      ggplot2::aes(x = 1 - specificity, y = sensitivity) +
-      ggplot2::geom_path(aes(color = set, group = set), size = 1) +
-      ggplot2::geom_abline(size = 1, lty = 2) +
-      ggplot2::guides(
-        color = guide_legend('', override.aes = list(size = 3))
-      ) +
-      ggplot2::coord_equal() +
-      ggplot2::theme(
-        legend.position = 'top'
-      ) +
-      ggplot2::labs(
-        title = 'Target probability ROC Curve',
-        subtitle = subtitle
-      )
-    
-    save_plot(
-      viz_roc_curve_compare,
-      path = path_roc_curve_compare
-    )
-    
-    save_plot(
-      viz_roc_curve,
-      path = path_roc_curve
-    )
-  }
+  # if(!file.exists(path_roc_curve) | !file.exists(path_roc_curve_compare)) {
+  #   
+  #   roc_curve <-
+  #     dplyr::bind_rows(
+  #       probs %>% 
+  #         yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
+  #         dplyr::mutate(set = 'Full data'),
+  #       probs_oob %>% 
+  #         yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
+  #         dplyr::mutate(set = 'Out-of-bag')
+  #     )
+  #   
+  #   viz_roc_curve <-
+  #     roc_curve %>% 
+  #     dplyr::filter(set == 'Full data') %>% 
+  #     ggplot2::ggplot() +
+  #     ggplot2::aes(x = 1 - specificity, y = sensitivity) +
+  #     ggplot2::geom_path(size = 1) +
+  #     ggplot2::geom_abline(size = 1, lty = 2) +
+  #     ggplot2::coord_equal() +
+  #     ggplot2::labs(
+  #       title = 'Target probability ROC Curve',
+  #       caption = caption
+  #     )
+  #   
+  #   viz_roc_curve_compare <-
+  #     roc_curve %>% 
+  #     ggplot2::ggplot() +
+  #     ggplot2::aes(x = 1 - specificity, y = sensitivity) +
+  #     ggplot2::geom_path(aes(color = set, group = set), size = 1) +
+  #     ggplot2::geom_abline(size = 1, lty = 2) +
+  #     ggplot2::guides(
+  #       color = guide_legend('', override.aes = list(size = 3))
+  #     ) +
+  #     ggplot2::coord_equal() +
+  #     ggplot2::theme(
+  #       legend.position = 'top'
+  #     ) +
+  #     ggplot2::labs(
+  #       title = 'Target probability ROC Curve',
+  #       caption = caption
+  #     )
+  #   
+  #   save_plot(
+  #     viz_roc_curve_compare,
+  #     path = path_roc_curve_compare
+  #   )
+  #   
+  #   save_plot(
+  #     viz_roc_curve,
+  #     path = path_roc_curve
+  #   )
+  # }
   
   if(!file.exists(path_shap)) {
     
@@ -2078,85 +2089,86 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     dplyr::arrange(shap_value_rnk)
   shap_agg_by_feature
   
+  features_labs <- .get_feature_labs()
+
   .prep_viz_data <- function(data) {
     data %>% 
-      dplyr::filter(feature != 'rnk_target') %>% 
+      dplyr::left_join(feature_labs) %>% 
       dplyr::mutate(
         dplyr::across(
-          feature, ~forcats::fct_reorder(.x, -shap_value_rnk)
+          feature_lab, ~forcats::fct_reorder(.x, -shap_value_rnk)
         )
       )
   }
   
-  if(!file.exists(path_shap_swarm)) {
-    
-    set.seed(42)
-    shap_sample <- 
-      shap %>% 
-      dplyr::group_by(feature) %>% 
-      dplyr::sample_frac(0.1) %>% 
-      dplyr::ungroup() %>% 
-      mutate(prnk = percent_rank(prob))
-    viz_shap_swarm <-
-      shap_sample %>%
-      dplyr::left_join(
-        shap_agg_by_feature %>% 
-          dplyr::select(feature, shap_value_rnk)
-      ) %>%
-      .prep_viz_data() %>%
-      ggplot2::ggplot() +
-      ggplot2::aes(y = feature, x = shap_value) +
-      ggbeeswarm::geom_quasirandom(
-        ggplot2::aes(color = prnk),
-        alpha = 0.5,
-        groupOnX = FALSE,
-        varwidth = TRUE,
-      ) +
-      # ggplot2::scale_color_gradient2(
-      #   limits = c(0, 1),
-      #   midpoint = 0.25,
-      #   low = '#ffa3af',
-      #   mid = 'grey80',
-      #   high = 'red'
-      # ) +
-      scico::scale_color_scico(
-        palette = 'berlin'
-      ) +
-      ggplot2::guides(
-        color = ggplot2::guide_legend('Probability', override.aes = list(size = 3, alpha = 1))
-      ) +
-      # theme_minimal() +
-      ggplot2::theme(
-        legend.position = 'top'
-      ) +
-      ggplot2::labs(
-        title = 'Target probability model feature importance',
-        subtitle = subtitle,
-        x = 'SHAP value',
-        y = NULL
-      )
-    # viz_shap_swarm
-    
-    save_plot(
-      viz_shap_swarm,
-      path = path_shap_swarm
-    )
-  }
+  # if(!file.exists(path_shap_swarm)) {
+  #   
+  #   set.seed(42)
+  #   shap_sample <- 
+  #     shap %>% 
+  #     dplyr::group_by(feature) %>% 
+  #     dplyr::sample_frac(0.1) %>% 
+  #     dplyr::ungroup() %>% 
+  #     mutate(prnk = percent_rank(prob))
+  #   
+  #   viz_shap_swarm <-
+  #     shap_sample %>%
+  #     dplyr::left_join(
+  #       shap_agg_by_feature %>% 
+  #         dplyr::select(feature, shap_value_rnk)
+  #     ) %>%
+  #     .prep_viz_data() %>%
+  #     ggplot2::ggplot() +
+  #     ggplot2::aes(y = feature_lab, x = shap_value) +
+  #     ggbeeswarm::geom_quasirandom(
+  #       ggplot2::aes(color = prnk),
+  #       alpha = 0.5,
+  #       groupOnX = FALSE,
+  #       varwidth = TRUE,
+  #     ) +
+  #     scico::scale_color_scico(
+  #       palette = 'berlin'
+  #     ) +
+  #     ggplot2::guides(
+  #       color = ggplot2::guide_legend('Probability', override.aes = list(size = 3, alpha = 1))
+  #     ) +
+  #     scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
+  #     # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
+  #     ggplot2::theme(
+  #       legend.position = 'top',
+  #       axis.text.y = element_text(size = 12, lineheight = 1),
+  #       panel.grid.major.y = ggplot2::element_blank()
+  #     ) +
+  #     ggplot2::labs(
+  #       title = 'Target probability model feature importance',
+  #       subtitle = caption,
+  #       x = 'SHAP value',
+  #       y = NULL
+  #     )
+  #   # viz_shap_swarm
+  #   
+  #   save_plot(
+  #     viz_shap_swarm,
+  #     path = path_shap_swarm
+  #   )
+  # }
   
   if(!file.exists(path_shap_agg)) {
     viz_shap_agg <- 
       shap_agg_by_feature %>% 
       .prep_viz_data() %>% 
       ggplot2::ggplot() +
-      ggplot2::aes(y = feature, x = shap_value) +
+      ggplot2::aes(y = feature_lab, x = shap_value) +
       ggplot2::geom_col() +
-      # theme_minimal() +
+      scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
+      # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
       ggplot2::theme(
+        axis.text.y = element_text(size = 12, lineheight = 1),
         panel.grid.major.y = ggplot2::element_blank()
       ) +
       ggplot2::labs(
         title = 'Target probability model feature importance',
-        subtitle = subtitle,
+        subtitle = caption,
         x = 'mean(|SHAP value|)',
         y = NULL
       )
@@ -2164,12 +2176,41 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
     
     save_plot(
       viz_shap_agg,
-      path = path_shap_agg
+      path = path_shap_agg,
+      height = 10,
+      width = 10
     )
   }
   
   if(!file.exists(path_metrics) | !file.exists(path_metrics_gt) | !file.exists(path_metrics_compare_gt)) {
     
+    # multiclass
+    frames_last <-
+      probs %>%
+      select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
+      group_by(game_id, play_id) %>%
+      slice_max(frame_id) %>%
+      ungroup()
+    frames_last
+
+    target_idx <-
+      frames_last %>%
+      filter(is_target == '1') %>%
+      rename(idx_o_target = idx_o) %>%
+      filter(idx_o_target <= 6) %>%
+      select(-nfl_id, -is_target)
+    target_idx
+
+    .prep_multiclass <- function(data, f = yardstick::accuracy) {
+      data %>% 
+        # semi_join(frames_last) %>%
+        left_join(target_idx) %>%
+        filter(.prob_class == '1') %>%
+        select(game_id, play_id, idx_o, idx_o_target) %>%
+        filter(idx_o <= 6) %>%
+        mutate(across(matches('^idx_o'), factor)) %>% 
+        f(idx_o, idx_o_target)
+    }
     acc <-
       probs %>% 
       yardstick::accuracy(!!col_y_sym, .prob_class)
@@ -2179,6 +2220,16 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       probs_oob %>% 
       yardstick::accuracy(!!col_y_sym, .prob_class)
     acc_oob
+    
+    acc_last <-
+      probs %>% 
+      semi_join(frames_last) %>% 
+      yardstick::accuracy(!!col_y_sym, .prob_class)
+    
+    acc_m_last <-
+      probs %>% 
+      semi_join(frames_last) %>%
+      .do_multiclass(f = yardstick::accuracy)
     
     auc <-
       probs %>% 
@@ -2208,7 +2259,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       probs_oob %>% 
       yardstick::mn_log_loss(!!col_y_sym, .prob_1)
     
-    n_metric <- 3
+    n_metric <- 4
     metrics <-
       dplyr::tibble(
         set = c(rep('full', n_metric), rep('oob', n_metric)),
@@ -2277,6 +2328,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
           play_id, 
           nfl_id, 
           frame_id, 
+          idx_o,
           !!col_y
         )
     ) %>% 
@@ -2304,6 +2356,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays()) {
       play_id,
       frame_id,
       dplyr::matches('nfl_id'),
+      idx_o,
       !!col_y_sym,
       dplyr::matches('prob_0'),
       dplyr::matches('prob_1')
@@ -2342,7 +2395,13 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     'all'
   }
   
-  features_init <- import_target_prob_features(suffix = .suffix)
+  features_init <- 
+    import_target_prob_features(suffix = .suffix) %>% 
+    semi_join(plays %>% select(game_id, play_id)) %>% 
+    filter(!is.na(idx_o)) %>% 
+    filter(!is.na(qb_o)) %>% 
+    # Shouldn't be necessary anymore
+    distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE)
   
   features_catch <- 
     features_init %>% 
@@ -2355,7 +2414,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
         mutate(is_catch = if_else(pass_result == 'C', 1L, 0L)) %>% 
         select(game_id, play_id, is_catch, nfl_id = target_nfl_id)
     )
-  features_catch
+  features_catch %>% count(is_catch)
   
   features <-
     features_init %>% 
@@ -2363,6 +2422,9 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
       features_catch %>% 
         select(game_id, play_id, frame_id, is_catch, nfl_id)
     ) %>% 
+    # filter(!is.na(idx_o)) %>% 
+    # filter(!is.na(qb_o)) %>% 
+    # distinct(game_id, play_id, frame_id, .keep_all = TRUE) %>% 
     mutate(idx = row_number()) %>% 
     relocate(idx)
   features
@@ -2376,31 +2438,32 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
       features %>% 
       filter(event != 'ball_snap')
     
-    subtitle <- 'At the throw'
+    caption <- NULL
   } else if(cnd == 'all') {
     features_x <- features
-    subtitle <- 'All frames between snap and throw'
+    caption <- NULL
   }
   suffix <- cnd
   
-  .path_data_big_x <- function(file, ext = NULL) {
-    if(!is.null(ext)) {
-      ext <- sprintf('.%s', ext)
-    } else {
-      ext <- ''
-    }
-    .path_data_big(file = sprintf('%s_target_prob_%s%s', file, suffix), ext = ext)
+  .path_data_small_x <- function(file, ext = NULL) {
+    .path_data_small(file = sprintf('%s_catch_prob_%s', file, suffix), ext = ext)
   }
+  
+  .path_data_big_x <- function(file, ext = NULL) {
+    .path_data_big(file = sprintf('%s_catch_prob_%s', file, suffix), ext = ext)
+  }
+  
   .path_figs_png_x <- function(file) {
-    .path_figs_png(file = printf('%s_target_prob_%s', file, suffix))
+    .path_figs_png(file = sprintf('%s_catch_prob_%s', file, suffix))
   }
   .path_data_big_parquet_x <- purrr::partial(.path_data_big_x, ext = 'parquet', ... = )
   
   path_res_tune_cv <- .path_data_big_x('res_tune_cv', ext = 'rds')
-  path_fit <- .path_data_big_x('fit')
+  path_fit <- .path_data_small_x('fit')
+  path_fit_config <- .path_data_small_x('fit_config')
   path_res_cv <- .path_data_big_parquet_x('res_cv')
   path_probs <- .path_data_big_parquet_x('probs')
-  
+
   cols_lst <-
     list(
       col_y = 'is_catch',
@@ -2445,8 +2508,6 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     mutate(sec = 0.1 * (frame_id - frame_id_start)) %>% 
     select(any_of(cols_lst$cols_keep)) %>% 
     # drop_na() %>% 
-    filter(!is.na(idx_o)) %>% 
-    filter(!is.na(qb_o)) %>% 
     mutate(idx = row_number()) %>% 
     relocate(idx)
   features_df
@@ -2470,8 +2531,11 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   features_df_filt <-
     features_df %>% 
     .filter_target() %>% 
+    # filter(game_id == 2018090900, play_id == 3873)
+    distinct(game_id, play_id, frame_id, .keep_all = TRUE) %>% 
     mutate(idx = row_number()) %>% 
     relocate(idx)
+  features_df_filt
   
   features_mat_filt <- 
     model.matrix(
@@ -2491,7 +2555,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
   .nrounds <- 500
   .booster <- 'gbtree'
   .objective <- 'binary:logistic'
-  .eval_metrics <- list('auc')
+  .eval_metrics <- list('logloss')
   
   # `folds` comes up in 2 places, so don't put it in an if clause.
   set.seed(42)
@@ -2532,14 +2596,15 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
     
     .get_metrics <-
       function(data,
-               i = 1,
-               path = path_ohsnap_data_x(sprintf('res_tune_cv_catch_prob_%02d', i), ext = 'rds'),
-               overwrite = FALSE) {
-        # i = 1; data = grid_params %>% slice(i); path = path_ohsnap_data_x(sprintf('res_tune_cv_catch_prob_%02d', i), ext = 'rds'); overwrite = FALSE
+               row = 1,
+               path = .path_data_big(sprintf('res_tune_cv_catch_prob_%02d', row), ext = 'rds'),
+               overwrite = TRUE) {
+        # row = 1; data <- grid_params %>% slice(row)
+        
         path_exists <- path %>% file.exists()
         if(path_exists & !overwrite) {
-          .display_info('Returning early for `i = {i}`.')
-          return(read_rds(path))
+          .display_info('Returning early for `row = {row}`.')
+          return(readr::read_rds(path))
         }
         
         params <-
@@ -2568,37 +2633,36 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
         
         res <- params
         res$iter = fit_cv$best_iteration
-        res$error_trn = fit_cv$evaluation_log[res$iter]$train_error_mean
-        res$error_tst = fit_cv$evaluation_log[res$iter]$test_error_mean
-        res$auc_trn = fit_cv$evaluation_log[res$iter]$train_auc_mean
-        res$auc_tst = fit_cv$evaluation_log[res$iter]$test_auc_mean
+        res$logloss_trn = fit_cv$evaluation_log[res$iter]$train_logloss_mean
+        res$logloss_tst = fit_cv$evaluation_log[res$iter]$test_logloss_mean
         
         res[['eval_metric']] <- NULL
-        res <- bind_rows(res)
-        write_rds(res, path)
+        res <- dplyr::bind_rows(res)
+        readr::write_rds(res, path)
         res
       }
     
-    res_tune_cv <- map_df(1:n_row, function(i) {
+    res_tune_cv <- purrr::map_df(1:n_row, function(i) {
       
       cat(glue::glue('Row {cli::bg_cyan(i)} (of {cli::bg_cyan(n_row)})'), sep = '\n')
-      .get_metrics(grid_params %>% slice(i), i)
+      .get_metrics(grid_params %>% dplyr::slice(i), row = i)
       
     })
-    res_tune_cv %>% write_rds(path_res_tune_cv)
+    res_tune_cv %>% readr::write_rds(path_res_tune_cv)
   } else {
     res_tune_cv <- path_res_tune_cv %>% read_rds()
   }
   
   # These can be used in the next 2 ifelse clauses. Easiest to just always run this.
   # res_best <- res %>% slice_min(error_tst)
-  res_cv_best <- res_tune_cv %>% slice_max(auc_tst)
+  res_cv_best <- res_tune_cv %>% slice_min(logloss_tst)
+  res_cv_best
   
   params_best <-
     list(
       booster = .booster,
       objective = .objective,
-      eval_metric = 'auc',
+      eval_metric = .eval_metrics,
       eta = res_cv_best %>% pluck('eta'),
       gamma = res_cv_best %>% pluck('gamma'),
       subsample = res_cv_best %>% pluck('subsample'),
@@ -2616,6 +2680,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays()) {
         verbose = 2
       )
     xgboost::xgb.save(fit, path_fit)
+    xgboost::xgb.config(fit) %>% jsonlite::write_json(path_fit_config)
   } else {
     fit <- xgboost::xgb.load(path_fit)
   }
