@@ -1489,13 +1489,13 @@ import_routes <- function() {
     arrow::read_parquet() 
 }
 
-import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = import_routes()) {
+import_target_prob_features <- function(suffix = c('all'), routes = import_routes()) {
   .path_data_big_parquet(sprintf('target_prob_features_%s', suffix)) %>% 
     arrow::read_parquet() %>% 
     # left_join(
     #   routes %>% select(-week),
     #   by = c('game_id', 'play_id', 'nfl_id')
-    # ) %>% 
+    # ) %>%
     filter(!is.na(route))
 }
 
@@ -1653,11 +1653,13 @@ binary_fct_to_lgl <- function(x) {
 
 do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwrite = TRUE, suffix = cnd) {
   
-  .suffix <- if(cnd %in% c('start', 'end')) {
-    'minmax'
-  } else {
-    'all'
-  }
+  # cnd = 'all'; plays = import_plays(); overwrite = TRUE; suffix = cnd
+  # .suffix <- if(cnd %in% c('start', 'end')) {
+  #   'minmax'
+  # } else {
+  #   'all'
+  # }
+  .suffix <- 'all'
   
   features <- 
     import_target_prob_features(suffix = .suffix) %>%
@@ -1707,21 +1709,16 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   path_res_tune_cv <- .path_data_big_x('res_tune_cv', ext = 'rds')
   path_fit <- .path_data_small_x('fit')
-  path_fit_config <- .path_data_small_x('fit_config')
+  path_fit_config <- .path_data_small_x('fit_config', ext = 'json')
   path_res_cv <- .path_data_big_parquet_x('res_cv')
   path_probs <- .path_data_big_parquet_x('probs')
   path_probs_oob <- .path_data_big_parquet_x('probs_oob')
   path_shap <- .path_data_big_parquet_x('shap')
-  
-  path_roc_curve <- .path_figs_png_x('viz_roc_curve')
-  path_roc_curve_compare <- .path_figs_png_x('viz_roc_curve_compare')
-  path_shap_swarm <- .path_figs_png_x('viz_shap_swarm')
+
   path_shap_agg <- .path_figs_png_x('viz_shap_agg')
   
   path_metrics <- .path_data_small_x('metrics', ext = 'csv')
-  path_metrics_gt <- .path_figs_png_x('metrics')
-  path_metrics_compare_gt <- .path_figs_png_x('metrics_compare')
-  
+
   cols_lst <-
     list(
       col_y = 'is_target',
@@ -2021,24 +2018,6 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   }
   
   if(!file.exists(path_res_cv) | !file.exists(path_probs_oob) & !overwrite) {
-
-    features_mat <- 
-      model.matrix(
-        ~.+0, 
-        data = 
-          features_df %>%
-          select(one_of(cols_lst$cols_keep)) %>% 
-          select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
-      )
-    features_mat
-    
-    features_dmat <-
-      xgboost::xgb.DMatrix(
-        features_mat,
-        label = features_df[[cols_lst$col_y]]
-      )
-    
-    # was stopping early at 10
     fit_cv <-
       xgboost::xgb.cv(
         prediction = TRUE,
@@ -2047,8 +2026,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         nrounds = .nrounds,
         folds = folds, 
         metrics = .eval_metrics,
-        early_stopping_rounds = 20,
-        print_every_n = 10
+        early_stopping_rounds = 10,
+        print_every_n = 1
       )
     
     res_cv <-
@@ -2160,58 +2139,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         )
       )
   }
-  
-  # if(!file.exists(path_shap_swarm)) {
-  #   
-  #   set.seed(42)
-  #   shap_sample <- 
-  #     shap %>% 
-  #     group_by(feature) %>% 
-  #     sample_frac(0.1) %>% 
-  #     ungroup() %>% 
-  #     mutate(prnk = percent_rank(prob))
-  #   
-  #   viz_shap_swarm <-
-  #     shap_sample %>%
-  #     left_join(
-  #       shap_agg_by_feature %>% 
-  #         select(feature, shap_value_rnk)
-  #     ) %>%
-  #     .prep_viz_data() %>%
-  #     ggplot() +
-  #     aes(y = feature_lab, x = shap_value) +
-  #     ggbeeswarm::geom_quasirandom(
-  #       aes(color = prnk),
-  #       alpha = 0.5,
-  #       groupOnX = FALSE,
-  #       varwidth = TRUE,
-  #     ) +
-  #     scico::scale_color_scico(
-  #       palette = 'berlin'
-  #     ) +
-  #     guides(
-  #       color = guide_legend('Probability', override.aes = list(size = 3, alpha = 1))
-  #     ) +
-  #     scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
-  #     # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
-  #     theme(
-  #       legend.position = 'top',
-  #       axis.text.y = element_text(size = 12, lineheight = 1),
-  #       panel.grid.major.y = element_blank()
-  #     ) +
-  #     labs(
-  #       title = 'Target probability model feature importance',
-  #       subtitle = caption,
-  #       x = 'SHAP value',
-  #       y = NULL
-  #     )
-  #   # viz_shap_swarm
-  #   
-  #   save_plot(
-  #     viz_shap_swarm,
-  #     path = path_shap_swarm
-  #   )
-  # }
+
   
   if(!file.exists(path_shap_agg) & !overwrite) {
     viz_shap_agg <- 
@@ -2242,29 +2170,38 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     )
   }
   
-  if((!file.exists(path_metrics) | !file.exists(path_metrics_gt) | !file.exists(path_metrics_compare_gt)) & !overwrite) {
+  if(!file.exists(path_metrics) & !overwrite) {
     
-    frames_first <-
+    .slice_f <- function(f = slice_min) {
+      probs %>%
+        select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
+        group_by(game_id, play_id) %>%
+        f(frame_id) %>%
+        ungroup()
+    }
+    
+    frames_first <- .slice_f(slice_min)
+    frames_last <- .slice_f(slice_max)
+    
+    frames_mid <-
       probs %>%
       select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
-      group_by(game_id, play_id) %>%
-      slice_min(frame_id) %>%
+      left_join(
+        frames_first %>% rename(frame_id_first = frame_id)
+      ) %>% 
+      left_join(
+        frames_last %>% rename(frame_id_last = frame_id)
+      ) %>% 
+      mutate(frame_id_mid = floor(0.5 * (frame_id_last - frame_id_first) + frame_id_first)) %>% 
+      filter(frame_id == frame_id_mid)
       ungroup()
-    frames_first
-    
-    frames_last <-
-      probs %>%
-      select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
-      group_by(game_id, play_id) %>%
-      slice_max(frame_id) %>%
-      ungroup()
-    frames_last
-    
+    frames_mid
+
     target_idx <-
       frames_last %>%
       filter(is_target == '1') %>%
       rename(idx_o_target = idx_o) %>%
-      filter(idx_o_target <= 6) %>%
+      # filter(idx_o_target <= 6) %>%
       select(-nfl_id, -is_target)
     target_idx
     
@@ -2277,6 +2214,11 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         filter(idx_o <= 6) %>%
         mutate(across(matches('^idx_o'), factor)) %>% 
         f(idx_o, idx_o_target)
+    }
+    
+    .f_acc <- function(data) {
+      data %>% 
+        yardstick::accuracy(!!col_y_sym, .prob_class)
     }
     
     acc <-
@@ -2329,14 +2271,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       probs_oob %>% 
       mutate(across(!!col_y_sym, binary_fct_to_int)) %>% 
       mse(!!col_y_sym, .prob_1)
-    
-    # ll <-
-    #   probs %>% 
-    #   yardstick::mn_log_loss(!!col_y_sym, .prob_1)
-    # 
-    # ll_oob <-
-    #   probs_oob %>% 
-    #   yardstick::mn_log_loss(!!col_y_sym, .prob_1)
+
     
     n_metric <- 3
     metrics <-
@@ -2348,45 +2283,6 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       arrange(.metric, set)
     metrics
     
-    metrics_gt <-
-      metrics %>% 
-      filter(set == 'full') %>% 
-      select(-.estimator, -set) %>% 
-      gt::gt() %>% 
-      gt::cols_label(
-        .list = 
-          list(
-            .metric = gt::md('**Metric**'),
-            .estimate = gt::md('**Estimate**')
-          )
-      ) %>% 
-      gt::fmt_number(columns = vars(.estimate), decimals = 2)
-    
-    metrics_gt_compare <-
-      metrics %>% 
-      select(-.estimator) %>% 
-      mutate(
-        across(
-          set,
-          ~case_when(
-            .x == 'full' ~ 'Full data',
-            TRUE ~ 'Out-of-bag'
-          )
-        )
-      ) %>% 
-      gt::gt() %>% 
-      gt::cols_label(
-        .list = 
-          list(
-            .metric = gt::md('**Metric**'),
-            .estimate = gt::md('**Estimate**'),
-            set = gt::md('**Set**')
-          )
-      ) %>% 
-      gt::fmt_number(columns = vars(.estimate), decimals = 2)
-    
-    gt::gtsave(metrics_gt, path_metrics_gt)
-    gt::gtsave(metrics_gt_compare, path_metrics_compare_gt)
     readr::write_csv(metrics, path_metrics)
   }
   fit
@@ -2468,11 +2364,12 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
 
 do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays(), overwrite = FALSE, suffix = cnd) {
   
-  .suffix <- if(cnd %in% c('start', 'end')) {
-    'minmax'
-  } else {
-    'all'
-  }
+  # .suffix <- if(cnd %in% c('start', 'end')) {
+  #   'minmax'
+  # } else {
+  #   'all'
+  # }
+  .suffix <- 'all'
   
   features_init <- 
     import_target_prob_features(suffix = .suffix) %>% 
@@ -2937,6 +2834,17 @@ do_combine_target_probs_and_dists <-
     probs_dists %>% arrow::write_parquet(path)
     probs_dists
   }
+
+import_probs_dists <- function() {
+  .path_data_big_parquet(
+    sprintf('probs_dists')
+  ) %>%
+    arrow::read_parquet() %>%
+    mutate(
+      prob_wt = wt * prob * catch_prob,
+      prob_diff_wt = (wt * catch_prob * prob) - (wt_start * catch_prob_start * prob_start)
+    )
+}
 
 # eval functions ----
 import_nflfastr_db_groups <- memoise::memoise({function(seasons = 2018, positions = import_positions()) {

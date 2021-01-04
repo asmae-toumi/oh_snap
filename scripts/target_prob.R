@@ -61,7 +61,7 @@ do_fit_catch_prob_model()
 }
 
 # eval stuff ----
-probs_dists <- do_combine_target_probs_and_dists(overwrite = TRUE)
+probs_dists <- do_combine_target_probs_and_dists()
 
 plays <- import_plays()
 
