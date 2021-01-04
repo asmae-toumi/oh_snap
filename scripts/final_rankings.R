@@ -1,7 +1,7 @@
 
 source('scripts/target_prob_setup.R')
 tpoe <- file.path('data', 'target_prob', 'small', 'tpoe_player_rankings.csv') %>% readr::read_csv()
-dpoe <- file.path('data', 'catch_prob', 'dpoe_arrival_player_rankings.csv') %>% readr::read_csv()
+cpoe <- file.path('data', 'catch_prob', 'dpoe_arrival_player_rankings.csv') %>% readr::read_csv()
 # roster <- nflfastR::fast_scraper_roster(seasons = 2018)
 # roster %>% filter(team == 'NE', position %in% c('SS', 'FS'))
 db_grps <- import_nflfastr_cb_groups()
@@ -73,7 +73,7 @@ tb <-
         xpoe_c = gt::md('**dCPOE**'),
         grp_rnk_t = gt::md('**dTPOE Rank**'),
         grp_rnk_c = gt::md('**dCPOE Rank**'),
-        grp_rnk = gt::md('**Overall Rank**')
+        grp_rnk = gt::md('**Group Rank**')
       )
   ) %>% 
   gt::data_color(
