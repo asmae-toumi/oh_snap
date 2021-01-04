@@ -106,7 +106,7 @@ viz_tpoe_gilmore <-
     plot.title = ggtext::element_markdown(size = 16),
     plot.title.position = 'plot',
     plot.caption = element_text(
-      size = 11.5,
+      size = 12,
       hjust = 0
     ),
     plot.caption.position = 'plot'
@@ -115,7 +115,8 @@ viz_tpoe_gilmore <-
     title = glue::glue("dTPOE of <b><span style='color:{color_gilmore};'>Gilmore</span></b> vs. <b><span style='color:{color_league};'>League</span></b> when closest or second closest defender"),
     # caption = glue::glue("<b><span style='color:{color_gilmore};'>Gilmore</span></b> on non-targeted plays: {.filter(T, F)}
     #                                on     targeted plays: {.filter(T, T)}"),
-    caption = glue::glue('"League" is not a true per-player average. It represents the average if all other players had the same number of plays as Gilmore.'),
+    caption = glue::glue('Gilmore numbers are season-long sums.
+                         "League" numbers represent the averages if all other players had the same number of plays as Gilmore.'),
     x = 'dTPOE', y = '% of all observations'
   )
 viz_tpoe_gilmore
