@@ -178,7 +178,7 @@ weighted_res_arrival %>%
   group_by(grp) %>%
   mutate(group_rank = dense_rank(dCPOE)) %>%
   arrange(overall_rank) %>%
-  write_csv(file = 'dCPOE_final_rankings.csv')
+  write_csv(file = 'data/catch_prob/dCPOE_final_rankings.csv')
 
 
 ## model evaluation - accuracy, brier score
@@ -219,7 +219,7 @@ weighted_res_arrival %>%
 
 ## create table df
 table_df <- data.frame(
-  model=c('nflfastR','throw','arrival','nflfastR','throw','arrival'),
+  model=c('nflfastR','TOT','TOA','nflfastR','TOT','TOA'),
   pass_result = c(0,0,0,1,1,1)
 )
 
@@ -248,7 +248,7 @@ for(i in 1:6){
 }
 
 ## CP model evaluation metrics
-table_metrics <- data.frame(model=c('nflfastR','throw','arrival'),
+table_metrics <- data.frame(model=c('nflfastR','TOT','TOA'),
                             acc=c("76.4%","78.0%","81.3%"),
                             brier=c(0.166, 0.153, 0.133),
                             auc=c(0.708, 0.762, 0.807))
@@ -274,4 +274,11 @@ gtab <- left_join(table_metrics, table_df2 %>%
          'CP | Completed' ='outcome = 1' ) %>% 
   gt(auto_align = 'c') 
 
-gtsave(gtab, file='../figs/cp_model_evaluation_table.png')
+gtab <- gtab %>% 
+  tab_header(title = 'Catch Probability Model Performance') %>% 
+  tab_source_note(
+    source_note = 'Models evaluated on n = 12,806 matching plays') %>% 
+  tab_style(style=cell_text(weight = 'bold'), 
+            locations=cells_column_labels(1:6))
+
+gtsave(gtab, file='figs/cp_model_evaluation_table.png')
