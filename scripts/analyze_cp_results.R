@@ -276,9 +276,14 @@ gtab <- left_join(table_metrics, table_df2 %>%
 
 gtab <- gtab %>% 
   tab_header(title = 'Catch Probability Model Performance') %>% 
+  tab_style(style = cell_text(weight = 'bold'), 
+            locations=cells_column_labels(1:6)) %>%
+  tab_style(style = cell_text(weight = 'bold'), 
+            locations = cells_title('title')) %>%
+  tab_footnote(
+    footnote = 'Density of predicted catch probabilities, given pass outcome',
+    locations = cells_column_labels(columns = 5:6)) %>%
   tab_source_note(
-    source_note = 'Models evaluated on n = 12,806 matching plays') %>% 
-  tab_style(style=cell_text(weight = 'bold'), 
-            locations=cells_column_labels(1:6))
+    source_note = 'Models evaluated on 12,806 matching plays')
 
 gtsave(gtab, file='figs/cp_model_evaluation_table.png')
