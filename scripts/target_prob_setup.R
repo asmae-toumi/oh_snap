@@ -3,16 +3,16 @@
 library(tidyverse)
 source('scripts/gg_field.R')
 
-ggplot2::theme_set(hrbrthemes::theme_ipsum(base_family = '', base_size = 14))
-ggplot2::theme_update(
-  plot.margin = ggplot2::margin(10, 10, 10, 10),
-  plot.title = ggplot2::element_text(size = 18),
-  plot.subtitle = ggplot2::element_text(size = 14),
+theme_set(hrbrthemes::theme_ipsum(base_family = '', base_size = 14))
+theme_update(
+  plot.margin = margin(10, 10, 10, 10),
+  plot.title = element_text(size = 18),
+  plot.subtitle = element_text(size = 14),
   plot.title.position = 'plot',
-  axis.text = ggplot2::element_text(size = 14),
-  axis.title = ggplot2::element_text(size = 14),
-  axis.title.x = ggplot2::element_text(size = 14),
-  axis.title.y = ggplot2::element_text(size = 14),
+  axis.text = element_text(size = 14),
+  axis.title = element_text(size = 14),
+  axis.title.x = element_text(size = 14),
+  axis.title.y = element_text(size = 14),
   plot.caption.position = 'plot'
 )
 
@@ -53,41 +53,41 @@ import_positions <- memoise::memoise({function() {
 .extract_n_position <- function(x, position) {
   rgx <- sprintf('(^.*)([0-9])(\\s%s.*$)', toupper(position))
   x %>%
-    stringr::str_replace_all(rgx, '\\2') %>%
+    str_replace_all(rgx, '\\2') %>%
     as.integer()
 }
 
 .drop_bad_plays <- function(plays, positions = import_positions(), players_from_tracking = import_players_from_tracking()) {
   targets <-
     plays %>% 
-    dplyr::select(.data$game_id, .data$play_id, nfl_id = .data$target_nfl_id, .data$pass_result) %>% 
-    dplyr::inner_join(
+    select(game_id, play_id, nfl_id = target_nfl_id, pass_result) %>% 
+    inner_join(
       players_from_tracking %>% 
-        dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$position),
+        select(game_id, play_id, nfl_id, position),
       by = c('game_id', 'play_id', 'nfl_id')
     )
   
   weird_targets <-
     list(
       targets %>% 
-        dplyr::filter(pass_result != 'S') %>% 
-        dplyr::filter(position == 'QB'),
+        filter(pass_result != 'S') %>% 
+        filter(position == 'QB'),
       targets %>% 
-        dplyr::left_join(positions, by = 'position') %>% 
-        dplyr::filter(side != 'O')
+        left_join(positions, by = 'position') %>% 
+        filter(side != 'O')
     ) %>% 
-    purrr::reduce(dplyr::bind_rows) %>% 
-    dplyr::distinct(game_id, play_id)
+    purrr::reduce(bind_rows) %>% 
+    distinct(game_id, play_id)
   
   res <-
     plays %>%
-    dplyr::anti_join(
+    anti_join(
       plays %>%
-        dplyr::filter((.data$n_k > 0L | .data$n_p > 0L)) %>%
-        dplyr::select(.data$game_id, .data$play_id),
+        filter((n_k > 0L | n_p > 0L)) %>%
+        select(game_id, play_id),
       by = c('game_id', 'play_id')
     ) %>% 
-    dplyr::anti_join(
+    anti_join(
       weird_targets,
       by = c('game_id', 'play_id')
     )
@@ -134,15 +134,15 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
     )
   plays <-
     plays %>%
-    dplyr::inner_join(target, by = c('game_id', 'play_id'))
+    inner_join(target, by = c('game_id', 'play_id'))
   plays
   
   suppressWarnings(
     plays <-
       plays %>%
-      dplyr::mutate(
-        dplyr::across(
-          .data$personnel_o,
+      mutate(
+        across(
+          personnel_o,
           list(
             n_p = ~.extract_n_position(.x, 'p'),
             n_k = ~.extract_n_position(.x, 'k')
@@ -226,39 +226,39 @@ import_tracking <- function(week = 1, positions = import_positions(), standardiz
     )
   tracking <- tracking[-1, ]
   tracking <- tracking[, -1] # Never need the time column
-  # tracking <- tracking %>% dplyr::select(-.data$time)
+  # tracking <- tracking %>% select(-time)
   
   tracking <-
     tracking %>%
-    dplyr::left_join(
+    left_join(
       positions %>%
-        dplyr::select(.data$position, .data$side),
+        select(position, side),
       by = 'position'
     )
   
-  ball <- tracking %>% dplyr::filter(display_name == 'Football')
-  tracking <- tracking %>% dplyr::filter(display_name != 'Football')
+  ball <- tracking %>% filter(display_name == 'Football')
+  tracking <- tracking %>% filter(display_name != 'Football')
   
   tracking <-
     tracking %>%
-    dplyr::inner_join(
+    inner_join(
       ball %>%
-        dplyr::select(.data$game_id, .data$play_id, .data$frame_id, ball_x = .data$x, ball_y = .data$y),
+        select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
       by = c('frame_id', 'game_id', 'play_id')
     )
   
   line_of_scrimmage <-
     tracking %>%
-    dplyr::filter(.data$event == 'ball_snap') %>%
-    dplyr::group_by(.data$game_id, .data$play_id) %>%
-    dplyr::filter(dplyr::row_number() == 1L) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(.data$game_id, .data$play_id, los = .data$ball_x) %>%
-    dplyr::ungroup()
+    filter(event == 'ball_snap') %>%
+    group_by(game_id, play_id) %>%
+    filter(row_number() == 1L) %>%
+    ungroup() %>%
+    select(game_id, play_id, los = ball_x) %>%
+    ungroup()
   
   tracking <-
     tracking %>%
-    dplyr::left_join(line_of_scrimmage, by = c('game_id', 'play_id'))
+    left_join(line_of_scrimmage, by = c('game_id', 'play_id'))
   
   if(!standardize) {
     return(tracking)
@@ -268,9 +268,9 @@ import_tracking <- function(week = 1, positions = import_positions(), standardiz
   y_max <- 160 / 3
   tracking <-
     tracking %>%
-    dplyr::mutate(
-      dplyr::across(c(.data$x, .data$ball_x, .data$los), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
-      dplyr::across(c(.data$y, .data$ball_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
+    mutate(
+      across(c(x, ball_x, los), ~ if_else(play_direction == 'left', !!x_max - .x, .x)),
+      across(c(y, ball_y), ~ if_else(play_direction == 'left', !!y_max - .x, .x))
     )
   tracking
 }
@@ -344,23 +344,23 @@ import_players_from_tracking <- memoise::memoise({function() {
 clip_tracking_at_events <-
   function(tracking,
            at = 'throw',
-           init_cnd = dplyr::quos(.data$event == 'ball_snap')) {
+           init_cnd = quos(event == 'ball_snap')) {
     events <- .switch_events_end(at)
     assertthat::assert_that(rlang::is_quosures(init_cnd))
     tracking %>%
-      dplyr::group_by(.data$game_id, .data$play_id, .data$nfl_id) %>%
-      dplyr::mutate(
+      group_by(game_id, play_id, nfl_id) %>%
+      mutate(
         group =
-          dplyr::case_when(
+          case_when(
             !!!init_cnd ~ 1L,
-            dplyr::lag(.data$event) %in% !!events ~ 1L,
+            lag(event) %in% !!events ~ 1L,
             TRUE ~ 0L
           ),
-        group = cumsum(.data$group)
+        group = cumsum(group)
       ) %>%
-      dplyr::ungroup() %>%
-      dplyr::filter(.data$group == 1L) %>%
-      dplyr::select(-.data$group)
+      ungroup() %>%
+      filter(group == 1L) %>%
+      select(-group)
   }
 
 do_by_week <- 
@@ -375,9 +375,9 @@ do_by_week <-
       return(res)
     }
     res <-
-      tibble::tibble(week = weeks) %>%
-      dplyr::mutate(data = purrr::map(.data$week, f, overwrite = overwrite, ...)) %>%
-      tidyr::unnest(.data$data)
+      tibble(week = weeks) %>%
+      mutate(data = purrr::map(week, f, overwrite = overwrite, ...)) %>%
+      unnest(data)
     res
   }
 
@@ -390,7 +390,7 @@ save_plot <-
            height = 8,
            width = height,
            ...) {
-    ggplot2::ggsave(plot = gg, filename = path, width = width, height = height, type = 'cairo', ...)
+    ggsave(plot = gg, filename = path, width = width, height = height, type = 'cairo', ...)
   }
 
 save_animation <-
@@ -452,7 +452,7 @@ animate_play <-
            target_probs = import_target_probs(cnd = cnd, which = which),
            clip = TRUE,
            at = 'end_routes',
-           init_cnd = dplyr::quos(.data$frame_id == 1L),
+           init_cnd = quos(frame_id == 1L),
            save = TRUE,
            dir = file.path('figs', 'target_prob'),
            ext = 'gif',
@@ -477,11 +477,11 @@ animate_play <-
     
     # game_id = 2018090905; play_id = 783
     .display_info('Animating `game_id = {game_id}`, `play_id = {play_id}`.')
-    meta <- tibble::tibble(game_id = game_id, play_id = play_id)
+    meta <- tibble(game_id = game_id, play_id = play_id)
     
     has_week <- !is.null(week)
     if(!has_week) {
-      game <- games %>% dplyr::filter(game_id == !!game_id)
+      game <- games %>% filter(game_id == !!game_id)
       assertthat::assert_that(nrow(game) == 1L)
       week <- game$week
     }
@@ -492,16 +492,16 @@ animate_play <-
     
     tracking <-
       tracking %>%
-      dplyr::inner_join(meta, by = c('game_id', 'play_id'))
+      inner_join(meta, by = c('game_id', 'play_id'))
     
     if(nrow(tracking) == 0L) {
       .display_error('Could not identify tracking data for `game_id = {game_id}`, `play_id = {play_id}`.')
     }
     
-    play <- plays %>% dplyr::inner_join(meta, by = c('game_id', 'play_id'))
+    play <- plays %>% inner_join(meta, by = c('game_id', 'play_id'))
     assertthat::assert_that(nrow(play) == 1L)
     
-    game <- games %>% dplyr::filter(game_id == !!game_id)
+    game <- games %>% filter(game_id == !!game_id)
     assertthat::assert_that(nrow(game) == 1L)
     
     target_id <- play$target_nfl_id
@@ -510,13 +510,13 @@ animate_play <-
     if(!has_target) {
       .display_warning('No target receiver.')
       # return(ggplot())
-      target <- tibble::tibble(display_name = '?', jersey_number = -1)
+      target <- tibble(display_name = '?', jersey_number = -1)
       has_target <- FALSE
     } else {
       target <-
         tracking %>%
-        dplyr::filter(nfl_id == !!target_id) %>%
-        dplyr::distinct(display_name, jersey_number)
+        filter(nfl_id == !!target_id) %>%
+        distinct(display_name, jersey_number)
       assertthat::assert_that(nrow(target) == 1L)
     }
     
@@ -525,27 +525,27 @@ animate_play <-
       
       personnel_and_rushers_min <-
         personnel_and_rushers %>%
-        dplyr::inner_join(meta, by = c('game_id', 'play_id')) %>% 
-        dplyr::filter(.data$n_rusher > 0L) %>%
-        dplyr::select(.data$game_id, .data$play_id, .data$n_rusher, .data$rushers)
+        inner_join(meta, by = c('game_id', 'play_id')) %>% 
+        filter(n_rusher > 0L) %>%
+        select(game_id, play_id, n_rusher, rushers)
       
       if(nrow(personnel_and_rushers_min) > 0L) {
         personnel_and_rushers_min <-
           personnel_and_rushers_min %>% 
-          dplyr::mutate(rushers = purrr::map(.data$rushers, ~dplyr::select(.x, .data$nfl_id, .data$idx_closest_to_ball)))
+          mutate(rushers = purrr::map(rushers, ~select(.x, nfl_id, idx_closest_to_ball)))
       }
     }
     
     tracking_clipped <-
       tracking %>%
-      clip_tracking_at_events(at = 'throw', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
-      dplyr::arrange(game_id, play_id, nfl_id, frame_id)
+      clip_tracking_at_events(at = 'throw', init_cnd = quos(frame_id == 1L)) %>%
+      arrange(game_id, play_id, nfl_id, frame_id)
     
     
     if(target_prob) {
       probs <-
         target_probs %>% 
-        dplyr::semi_join(meta, by = c('game_id', 'play_id'))
+        semi_join(meta, by = c('game_id', 'play_id'))
       
       if(nrow(probs) >= 0) {
         probs <-
@@ -562,7 +562,7 @@ animate_play <-
       tracking <-
         tracking %>%
         clip_tracking_at_events(
-          # init_cnd = dplyr::quos(.data$frame_id == 1L),
+          # init_cnd = quos(frame_id == 1L),
           init_cnd = init_cnd,
           at = at
         )
@@ -578,29 +578,29 @@ animate_play <-
     
     target_tracking <-
       tracking %>%
-      dplyr::filter(.data$nfl_id == !!target_id)
+      filter(nfl_id == !!target_id)
     
     nontarget_tracking <-
       tracking %>%
-      dplyr::filter(.data$nfl_id != !!target_id)
+      filter(nfl_id != !!target_id)
     
     target_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(.data$nfl_id == !!target_id)
+      filter(nfl_id == !!target_id)
     
     nontarget_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(.data$nfl_id != !!target_id)
+      filter(nfl_id != !!target_id)
     
     ball <-
       tracking %>%
-      dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id, x = .data$ball_x, y = .data$ball_y) %>%
-      dplyr::mutate(nfl_id = NA_integer_)
+      distinct(game_id, play_id, frame_id, x = ball_x, y = ball_y) %>%
+      mutate(nfl_id = NA_integer_)
     
     if(is.null(yardmin) | is.null(yardmax)) {
       yardminmax <-
         tracking %>%
-        dplyr::summarize(dplyr::across(.data$x, list(min = min, max = max)))
+        summarize(across(x, list(min = min, max = max)))
       
       if(is.null(yardmin)) {
         yardmin <- yardminmax$x_min
@@ -617,7 +617,7 @@ animate_play <-
     if(is.null(buffer)) {
       yminmax <-
         tracking %>%
-        dplyr::summarize(dplyr::across(.data$y, list(min = min, max = max)))
+        summarize(across(y, list(min = min, max = max)))
       ymin <- yminmax$y_min
       ymin <- .round_any(ymin, 1, floor)
       ymax <- yminmax$y_max
@@ -635,8 +635,8 @@ animate_play <-
     
     if(team_colors) {
       
-      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color)
-      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color2)
+      home_color <- colors %>% filter(team == !!home_team) %>% pull(color)
+      away_color <- colors %>% filter(team == !!away_team) %>% pull(color2)
       if(play$possession_team == home_team) {
         offense_color <- home_color
         defense_color <- away_color
@@ -658,14 +658,14 @@ animate_play <-
     
     nontarget_tracking_between <-
       nontarget_tracking %>% 
-      dplyr::anti_join(
+      anti_join(
         nontarget_tracking_clipped %>% 
-          dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$frame_id),
+          select(game_id, play_id, nfl_id, frame_id),
         by = c('nfl_id', 'frame_id', 'game_id', 'play_id')
       )
     
     p <-
-      ggplot2::ggplot() +
+      ggplot() +
       gg_field(
         yardmin = yardmin,
         yardmax = yardmax,
@@ -675,44 +675,44 @@ animate_play <-
         sideline_color = sideline_color # ,
         # ...
       ) +
-      ggplot2::aes(x = .data$x, y = .data$y) +
-      ggplot2::geom_segment(
-        data = tibble::tibble(x = !!line_of_scrimmage),
+      aes(x = x, y = y) +
+      geom_segment(
+        data = tibble(x = !!line_of_scrimmage),
         inherit.aes = FALSE,
-        ggplot2::aes(x = .data$x, y = 0, xend = .data$x, yend = !!max_y),
+        aes(x = x, y = 0, xend = x, yend = !!max_y),
         size = 1.25
       ) +
-      ggplot2::geom_segment(
-        data = tibble::tibble(x = !!first_down_line),
+      geom_segment(
+        data = tibble(x = !!first_down_line),
         inherit.aes = FALSE,
-        ggplot2::aes(x = .data$x, y = 0, xend = .data$x, yend = !!max_y),
+        aes(x = x, y = 0, xend = x, yend = !!max_y),
         color = '#ffff7f',
         size = 2
       ) +
-      ggplot2::geom_point(
+      geom_point(
         data = ball,
         inherit.aes = TRUE,
         size = 3,
         color = 'brown'
       ) +
-      ggplot2::geom_path(
-        data = nontarget_tracking_clipped %>% dplyr::select(-.data$frame_id),
-        ggplot2::aes(color = .data$side, group = .data$nfl_id),
+      geom_path(
+        data = nontarget_tracking_clipped %>% select(-frame_id),
+        aes(color = side, group = nfl_id),
         size = 1,
         alpha = 0.3,
         show.legend = FALSE
       ) +
-      ggplot2::geom_path(
-        data = nontarget_tracking_between %>% dplyr::select(-.data$frame_id),
-        ggplot2::aes(color = .data$side, group = .data$nfl_id),
+      geom_path(
+        data = nontarget_tracking_between %>% select(-frame_id),
+        aes(color = side, group = nfl_id),
         size = 1,
         alpha = 0.3,
         linetype = 2,
         show.legend = FALSE
       ) +
-      ggplot2::geom_text(
+      geom_text(
         data = nontarget_tracking,
-        ggplot2::aes(label = .data$jersey_number, color = .data$side),
+        aes(label = jersey_number, color = side),
         size = pts(14), 
         show.legend = FALSE,
         fontface = 'bold'
@@ -722,32 +722,32 @@ animate_play <-
       
       target_tracking_between <-
         target_tracking %>% 
-        dplyr::anti_join(
+        anti_join(
           target_tracking_clipped %>% 
-            dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$frame_id),
+            select(game_id, play_id, nfl_id, frame_id),
           by = c('nfl_id', 'frame_id', 'game_id', 'play_id')
         )
       
       p <-
         p +
-        ggplot2::geom_path(
-          data = target_tracking_clipped %>% dplyr::select(-.data$frame_id),
-          ggplot2::aes(color = .data$side),
+        geom_path(
+          data = target_tracking_clipped %>% select(-frame_id),
+          aes(color = side),
           size = 2,
           alpha = 0.3,
           show.legend = FALSE
         ) +
-        ggplot2::geom_path(
-          data = target_tracking_between %>% dplyr::select(-.data$frame_id),
-          ggplot2::aes(color = .data$side),
+        geom_path(
+          data = target_tracking_between %>% select(-frame_id),
+          aes(color = side),
           size = 2,
           alpha = 0.3,
           linetype = 2,
           show.legend = FALSE
         ) +
-        ggplot2::geom_text(
+        geom_text(
           data = target_tracking,
-          ggplot2::aes(label = .data$jersey_number, color = .data$side),
+          aes(label = jersey_number, color = side),
           size = pts(14),
           show.legend = FALSE,
           fontface = 'bold'
@@ -756,19 +756,19 @@ animate_play <-
     
     p <-
       p +
-      # ggplot2::scale_size_manual(limits = c(pts(14), pts(20))) +
-      ggplot2::scale_color_manual(values = c('O' = offense_color, 'D' = defense_color))
+      # scale_size_manual(limits = c(pts(14), pts(20))) +
+      scale_color_manual(values = c('O' = offense_color, 'D' = defense_color))
     
     # Theme stuff
     title <- ifelse(is.null(title), glue::glue("<b><span style='color:{away_color};'>{away_team}</span></b> @ <b><span style='color:{home_color};'>{home_team}</span></b>, Week {week}"), title)
     caption <- ifelse(is.null(caption), glue::glue('Q{play$quarter}: {play$play_description}'), caption)
     p <-
       p +
-      ggplot2::theme(
+      theme(
         plot.title = ggtext::element_markdown(),
         plot.title.position = 'plot',
-        strip.background = ggplot2::element_rect(fill = NA),
-        # strip.text = ggplot2::element_text()
+        strip.background = element_rect(fill = NA),
+        # strip.text = element_text()
         plot.caption = ggtext::element_markdown(
           size = 12,
           hjust = 0,
@@ -776,14 +776,14 @@ animate_play <-
         ),
         plot.caption.position = 'plot'
       ) +
-      ggplot2::labs(
+      labs(
         subtitle = subtitle,
         title = title,
         caption = caption,
         x = NULL, y = NULL
       )
     
-    anim <- p + gganimate::transition_manual(.data$frame_id)
+    anim <- p + gganimate::transition_manual(frame_id)
     
     if(target_prob) {
       
@@ -921,7 +921,7 @@ animate_play <-
       )
     
     if(target_prob) {
-      anim_tp <- p_tp + gganimate::transition_reveal(.data$frame_id)
+      anim_tp <- p_tp + gganimate::transition_reveal(frame_id)
       # Adjustment is needed if tp stuff has a different number of frames.
       # seconds_tp <- frame_ids %>% length() %>% {. / 10}
       # end_pause_tp <- end_pause + (seconds - seconds_tp)
@@ -976,98 +976,98 @@ do_identify_personnel_and_rushers <-
     
     end_frames <-
       tracking_clipped %>%
-      dplyr::group_by(.data$game_id, .data$play_id) %>%
-      dplyr::filter(.data$frame_id == max(.data$frame_id)) %>%
-      dplyr::ungroup()
+      group_by(game_id, play_id) %>%
+      filter(frame_id == max(frame_id)) %>%
+      ungroup()
     end_frames
     
     def_end_frames <-
       end_frames %>%
-      dplyr::filter(.data$side == 'D')
+      filter(side == 'D')
     
     ball_end_frames <-
       end_frames %>%
-      dplyr::distinct(game_id, play_id, frame_id, ball_x, ball_y)
+      distinct(game_id, play_id, frame_id, ball_x, ball_y)
     
     potential_rushers <-
       def_end_frames %>%
-      dplyr::filter(.data$x < .data$los) %>%
-      dplyr::select(game_id, play_id, frame_id, nfl_id, x, y)
+      filter(x < los) %>%
+      select(game_id, play_id, frame_id, nfl_id, x, y)
     potential_rushers
     
     potential_rushers_ranked <-
       potential_rushers %>%
-      dplyr::select(game_id, play_id, nfl_id, x, y) %>%
-      dplyr::inner_join(
+      select(game_id, play_id, nfl_id, x, y) %>%
+      inner_join(
         ball_end_frames,
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::mutate(
+      mutate(
         dist_to_ball_abs = .dist(x, ball_x, y, ball_y) %>% abs()
       ) %>%
-      dplyr::arrange(game_id, play_id, dist_to_ball_abs) %>%
-      dplyr::group_by(game_id, play_id) %>%
-      dplyr::mutate(
-        idx_closest_to_ball = dplyr::row_number(dist_to_ball_abs)
+      arrange(game_id, play_id, dist_to_ball_abs) %>%
+      group_by(game_id, play_id) %>%
+      mutate(
+        idx_closest_to_ball = row_number(dist_to_ball_abs)
       )
     
     def_agg <-
       def_end_frames %>%
-      dplyr::select(.data$game_id, .data$play_id) %>%
-      dplyr::group_by(.data$game_id, .data$play_id) %>%
-      dplyr::summarize(n_d = dplyr::n()) %>%
-      dplyr::ungroup()
+      select(game_id, play_id) %>%
+      group_by(game_id, play_id) %>%
+      summarize(n_d = n()) %>%
+      ungroup()
     
     end_frames %>%
-      dplyr::filter(.data$side == 'O' & .data$position != 'QB') %>%
-      dplyr::count(position)
+      filter(side == 'O' & position != 'QB') %>%
+      count(position)
     
     pos_n <-
       end_frames %>%
-      dplyr::left_join(
+      left_join(
         positions %>%
-          dplyr::select(.data$side, .data$position, .data$position_category) %>%
-          dplyr::mutate(dplyr::across(.data$position_category, tolower))
+          select(side, position, position_category) %>%
+          mutate(across(position_category, tolower))
       ) %>%
-      dplyr::count(.data$game_id, .data$play_id, .data$position_category) %>%
-      tidyr::pivot_wider(
-        names_from = .data$position_category,
-        values_from = .data$n,
+      count(game_id, play_id, position_category) %>%
+      pivot_wider(
+        names_from = position_category,
+        values_from = n,
         names_prefix = 'n_'
       )
     
     off_agg <-
       end_frames %>%
-      dplyr::filter(.data$side == 'O' & .data$position != 'QB') %>%
-      dplyr::group_by(.data$game_id, .data$play_id) %>%
-      dplyr::summarize(
-        n_route = sum(!is.na(.data$route))
+      filter(side == 'O' & position != 'QB') %>%
+      group_by(game_id, play_id) %>%
+      summarize(
+        n_route = sum(!is.na(route))
       ) %>%
-      dplyr::ungroup()
+      ungroup()
     
     res <-
       pos_n %>%
-      dplyr::left_join(
+      left_join(
         off_agg,
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::left_join(
+      left_join(
         def_agg,
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::left_join(
+      left_join(
         potential_rushers_ranked %>%
-          tidyr::nest(
-            rushers = -c(.data$game_id, .data$play_id)
+          nest(
+            rushers = -c(game_id, play_id)
           ),
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::mutate(
+      mutate(
         # has_rusher = map_lgl(rushers, ~!is.null(.x))
-        rushers = purrr::map_if(rushers, is.null, ~tibble::tibble()),
+        rushers = purrr::map_if(rushers, is.null, ~tibble()),
         n_rusher = purrr::map_int(rushers, ~nrow(.x))
       ) %>%
-      dplyr::relocate(rushers, .after = dplyr::last_col())
+      relocate(rushers, .after = last_col())
     arrow::write_rds(res, path)
     res
   }
@@ -1088,9 +1088,9 @@ do_identify_routes <-
     tracking <- week %>% import_tracking(standardize = FALSE)
     res <-
       tracking %>%
-      dplyr::filter(!is.na(.data$route)) %>%
-      dplyr::distinct(
-        .data$game_id, .data$play_id, .data$nfl_id, .data$route
+      filter(!is.na(route)) %>%
+      distinct(
+        game_id, play_id, nfl_id, route
       )
     arrow::write_parquet(res, path)
     res
@@ -1112,8 +1112,8 @@ do_import_players_from_tracking <-
     tracking <- week %>% import_tracking(standardize = FALSE)
     res <-
       tracking %>%
-      dplyr::distinct(
-        .data$game_id, .data$play_id, .data$nfl_id, .data$position, .data$display_name, .data$jersey_number
+      distinct(
+        game_id, play_id, nfl_id, position, display_name, jersey_number
       )
     arrow::write_parquet(res, path)
     res
@@ -1123,20 +1123,20 @@ do_import_players_from_tracking <-
 .select_side <- function(data, side = c('O', 'D'), ...) {
   side <- match.arg(side)
   data %>%
-    dplyr::filter(side == !!side) %>%
-    dplyr::select(
-      .data$game_id,
-      .data$play_id,
-      .data$frame_id,
-      .data$event,
-      .data$nfl_id,
-      .data$x,
-      .data$y,
-      .data$s,
-      .data$a,
-      .data$dis,
-      .data$o,
-      .data$dir,
+    filter(side == !!side) %>%
+    select(
+      game_id,
+      play_id,
+      frame_id,
+      event,
+      nfl_id,
+      x,
+      y,
+      s,
+      a,
+      dis,
+      o,
+      dir,
       ...
     )
 }
@@ -1167,56 +1167,56 @@ do_generate_features_at_events <-
     
     tracking <-
       tracking %>%
-      dplyr::semi_join(
+      semi_join(
         plays %>%
-          dplyr::select(.data$game_id, .data$play_id),
+          select(game_id, play_id),
         by = c('game_id', 'play_id')
       )
     
-    qb <- tracking %>% dplyr::filter(position == 'QB')
-    tracking <- tracking %>% dplyr::filter(position != 'QB')
+    qb <- tracking %>% filter(position == 'QB')
+    tracking <- tracking %>% filter(position != 'QB')
     
     tracking <-
       tracking %>%
-      dplyr::inner_join(
+      inner_join(
         qb %>%
-          dplyr::select(
-            .data$game_id,
-            .data$play_id,
-            .data$frame_id,
-            qb_x = .data$x,
-            qb_y = .data$y,
-            qb_s = .data$s,
-            qb_a = .data$a,
-            qb_dis = .data$dis,
-            qb_o = .data$o,
-            qb_dir = .data$dir
+          select(
+            game_id,
+            play_id,
+            frame_id,
+            qb_x = x,
+            qb_y = y,
+            qb_s = s,
+            qb_a = a,
+            qb_dis = dis,
+            qb_o = o,
+            qb_dir = dir
           ),
         by = c('frame_id', 'game_id', 'play_id')
       ) %>%
-      dplyr::left_join(
+      left_join(
         plays %>%
-          dplyr::select(.data$game_id, .data$play_id, .data$yards_to_go),
+          select(game_id, play_id, yards_to_go),
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::mutate(fd = .data$los + dplyr::if_else(.data$play_direction == 'left', -1, 1) * .data$yards_to_go)
+      mutate(fd = los + if_else(play_direction == 'left', -1, 1) * yards_to_go)
     tracking
     
     x_max <- 120
     y_max <- 160 / 3
     tracking <-
       tracking %>%
-      dplyr::mutate(
-        dplyr::across(c(.data$x, .data$ball_x, .data$qb_x, .data$los), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
-        dplyr::across(c(.data$x, .data$ball_x, .data$qb_x), ~.x - los),
-        dplyr::across(c(.data$y, .data$ball_y, .data$qb_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
+      mutate(
+        across(c(x, ball_x, qb_x, los), ~ if_else(play_direction == 'left', !!x_max - .x, .x)),
+        across(c(x, ball_x, qb_x), ~.x - los),
+        across(c(y, ball_y, qb_y), ~ if_else(play_direction == 'left', !!y_max - .x, .x))
       )
     
     frames <-
       tracking %>%
       clip_tracking_at_events(at = 'throw')
     
-    snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
+    snap_frames <- tracking %>% filter(event == 'ball_snap')
     
     frames <-
       frames %>% 
@@ -1232,137 +1232,148 @@ do_generate_features_at_events <-
       
       frames <-
         frames %>% 
-        dplyr::group_by(.data$game_id, .data$play_id, .data$nfl_id) %>% 
-        dplyr::filter(.data$frame_id == min(.data$frame_id) | .data$frame_id == max(.data$frame_id)) %>% 
-        dplyr::ungroup() %>% 
-        dplyr::distinct()
+        group_by(game_id, play_id, nfl_id) %>% 
+        filter(frame_id == min(frame_id) | frame_id == max(frame_id)) %>% 
+        ungroup() %>% 
+        distinct()
     }
     
     
-    personnel_and_rushers_week <-
+    personnel_and_rushers_week_init <-
       personnel_and_rushers %>%
       # Filter first cuz unnesting all tibbles can take a bit of time.
-      dplyr::filter(.data$week == !!week) %>%
-      dplyr::filter(.data$n_rusher > 0L) %>%
-      dplyr::mutate(rushers = purrr::map(.data$rushers, ~dplyr::select(.x, .data$nfl_id, .data$idx_closest_to_ball))) %>%
-      dplyr::select(.data$game_id, .data$play_id, .data$n_rusher, .data$rushers)
+      filter(week == !!week) %>%
+      filter(n_rusher > 0L)
+    
+    personnel_and_rushers_week <-
+      personnel_and_rushers_week_init %>%
+      mutate(rushers = purrr::map(rushers, ~select(.x, nfl_id, idx_closest_to_ball))) %>%
+      select(game_id, play_id, n_rusher, rushers)
     personnel_and_rushers_week
+    
+    frames <-
+      frames %>% 
+      anti_join(
+        personnel_and_rushers_week_init %>% 
+          select(game_id, play_id, rushers) %>% 
+          unnest(rushers)
+      )
     
     # One strange source of bad data is play_id-frame_id combos where there is just 1 player.
     frames_n <-
       frames %>%
-      dplyr::count(.data$game_id, .data$play_id, .data$frame_id, .data$event)
+      count(game_id, play_id, frame_id, event)
     
     frames_first_o <-
       frames %>%
-      dplyr::filter(.data$side == 'O') %>%
-      dplyr::group_by(.data$game_id, .data$play_id) %>%
-      dplyr::filter(.data$frame_id == min(.data$frame_id)) %>%
-      dplyr::ungroup()
+      filter(side == 'O') %>%
+      group_by(game_id, play_id) %>%
+      filter(frame_id == min(frame_id)) %>%
+      ungroup()
     
     frames_n_o <-
       frames_first_o %>%
-      dplyr::count(.data$game_id, .data$play_id)
+      count(game_id, play_id)
     
     frames_first_idx_o <-
       frames_first_o %>%
-      dplyr::left_join(targets, by = 'nfl_id') %>% 
-      dplyr::group_by(.data$game_id, .data$play_id) %>%
-      dplyr::mutate(
-        dist_ball = .dist(.data$x, .data$ball_x, .data$y, .data$ball_y),
-        idx_o = dplyr::row_number(.data$rnk_target)
+      left_join(targets, by = 'nfl_id') %>% 
+      group_by(game_id, play_id) %>%
+      mutate(
+        dist_ball = .dist(x, ball_x, y, ball_y),
+        idx_o = row_number(rnk_target)
       ) %>%
-      dplyr::ungroup() %>%
-      dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$idx_o) %>% 
-      dplyr::arrange(.data$game_id, .data$play_id, .data$idx_o)
+      ungroup() %>%
+      select(game_id, play_id, nfl_id, idx_o) %>% 
+      arrange(game_id, play_id, idx_o)
     frames_first_idx_o
     
     frames_target <-
       frames_first_idx_o %>%
-      dplyr::left_join(
+      left_join(
         plays %>%
-          dplyr::select(
-            .data$game_id,
-            .data$play_id,
-            .data$target_nfl_id
+          select(
+            game_id,
+            play_id,
+            target_nfl_id
           ),
         by = c('game_id', 'play_id')
       ) %>%
-      dplyr::mutate(
-        is_target = dplyr::if_else(.data$nfl_id == .data$target_nfl_id, 1L, 0L)
+      mutate(
+        is_target = if_else(nfl_id == target_nfl_id, 1L, 0L)
       )
     
     frames_o <-
       frames %>%
       .select_side(side = 'O') %>%
-      dplyr::distinct()
+      distinct()
     
     frames_o_renamed <-
       frames_o %>%
-      dplyr::rename_with(
+      rename_with(
         ~sprintf('%s_%s', .x, 'o'), 
-        -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)
+        -c(game_id, play_id, frame_id, event)
       )
     
     min_dists_naive_o <-
       frames_o %>%
-      dplyr::left_join(
+      left_join(
         frames_o_renamed,
         by = c('game_id', 'play_id', 'frame_id', 'event')
       ) %>%
-      dplyr::mutate(dist_o = .dist(.data$x, .data$x_o, .data$y, .data$y_o)) %>%
-      dplyr::filter(.data$dist_o > 0) %>%
-      dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, .data$nfl_id) %>%
-      dplyr::filter(.data$dist_o == min(.data$dist_o)) %>%
-      dplyr::ungroup() %>%
-      dplyr::select(game_id, play_id, frame_id, event, nfl_id, dplyr::matches('_o'))
+      mutate(dist_o = .dist(x, x_o, y, y_o)) %>%
+      filter(dist_o > 0) %>%
+      group_by(game_id, play_id, frame_id, event, nfl_id) %>%
+      filter(dist_o == min(dist_o)) %>%
+      ungroup() %>%
+      select(game_id, play_id, frame_id, event, nfl_id, matches('_o'))
     
     frames_qb <-
       frames %>%
-      dplyr::distinct(
-        .data$game_id,
-        .data$play_id,
-        .data$frame_id,
-        .data$event,
-        .data$qb_x,
-        .data$qb_y,
-        .data$qb_s,
-        .data$qb_a,
-        .data$qb_dis,
-        .data$qb_o,
-        .data$qb_dir
+      distinct(
+        game_id,
+        play_id,
+        frame_id,
+        event,
+        qb_x,
+        qb_y,
+        qb_s,
+        qb_a,
+        qb_dis,
+        qb_o,
+        qb_dir
       )
     
     frames_d <-
       frames %>%
       .select_side(side = 'D') %>%
-      dplyr::distinct()
+      distinct()
     
     frames_d_renamed <-
       frames_d %>%
-      dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event))
+      rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event))
     
     min_dists_naive_qb <-
       frames_qb %>%
-      dplyr::left_join(
+      left_join(
         frames_d %>%
           rename_with(~sprintf('%s_%s', .x, 'rusher'), -c(game_id, play_id, frame_id, event)),
         by = c('game_id', 'play_id', 'frame_id', 'event')
       ) %>%
-      dplyr::mutate(dist_rusher = .dist(.data$qb_x, .data$x_rusher, .data$qb_y, .data$y_rusher)) %>%
-      dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event) %>%
-      dplyr::filter(.data$dist_rusher == min(.data$dist_rusher)) %>%
-      dplyr::ungroup()
+      mutate(dist_rusher = .dist(qb_x, x_rusher, qb_y, y_rusher)) %>%
+      group_by(game_id, play_id, frame_id, event) %>%
+      filter(dist_rusher == min(dist_rusher)) %>%
+      ungroup()
     
     min_dists_naive_d_init <-
       frames_o %>%
-      dplyr::left_join(
+      left_join(
         frames_d %>%
           rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event)),
         by = c('game_id', 'play_id', 'frame_id', 'event')
       ) %>%
-      dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
-      dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, nfl_id) %>%
+      mutate(dist_d = .dist(x, x_d, y, y_d)) %>%
+      group_by(game_id, play_id, frame_id, event, nfl_id) %>%
       mutate(idx_closest = row_number(dist_d)) %>%
       ungroup() %>%
       select(game_id, play_id, frame_id, event, nfl_id, matches('_d'), idx_closest)
@@ -1371,28 +1382,28 @@ do_generate_features_at_events <-
       
       min_dists_naive <-
         frames_o %>%
-        # dplyr::filter(is_target == 1L) %>%
-        dplyr::left_join(
+        # filter(is_target == 1L) %>%
+        left_join(
           frames_target,
           by = c('game_id', 'play_id', 'nfl_id')
         ) %>%
-        dplyr::left_join(
+        left_join(
           frames_d %>%
-            dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)),
+            rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event)),
           by = c('game_id', 'play_id', 'frame_id', 'event')
         ) %>%
-        dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
-        # dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, .data$nfl_id) %>%
-        # dplyr::mutate(idx_closest = dplyr::row_number(.data$dist_d)) %>%
-        # dplyr::ungroup() %>%
-        dplyr::select(
-          .data$game_id,
-          .data$play_id,
-          .data$frame_id,
-          .data$nfl_id,
-          .data$nfl_id_d,
-          .data$is_target,
-          .data$dist_d
+        mutate(dist_d = .dist(x, x_d, y, y_d)) %>%
+        # group_by(game_id, play_id, frame_id, event, nfl_id) %>%
+        # mutate(idx_closest = row_number(dist_d)) %>%
+        # ungroup() %>%
+        select(
+          game_id,
+          play_id,
+          frame_id,
+          nfl_id,
+          nfl_id_d,
+          is_target,
+          dist_d
         )
       
       min_dists_naive %>% arrow::write_parquet(path_min_dists)
@@ -1400,65 +1411,65 @@ do_generate_features_at_events <-
     
     res <-
       frames_o %>%
-      dplyr::full_join(
-        frames_target %>% dplyr::rename(nfl_id_target = target_nfl_id),
+      full_join(
+        frames_target %>% rename(nfl_id_target = target_nfl_id),
         by = c('game_id', 'play_id', 'nfl_id')
       ) %>%
       # distinct() %>%
       # Add closest other defender.
-      dplyr::full_join(
+      full_join(
         min_dists_naive_d_init %>%
-          dplyr::filter(idx_closest == 1L) %>%
-          dplyr::rename_with(~sprintf('%s1_naive', .x), dplyr::matches('_d$')) %>%
-          dplyr::select(-idx_closest),
+          filter(idx_closest == 1L) %>%
+          rename_with(~sprintf('%s1_naive', .x), matches('_d$')) %>%
+          select(-idx_closest),
         by = c('game_id', 'play_id', 'frame_id', 'event', 'nfl_id')
       ) %>%
       # count(game_id, play_id, frame_id, event, nfl_id, sort = T)
-      dplyr::full_join(
+      full_join(
         min_dists_naive_d_init %>%
-          dplyr::filter(idx_closest == 2L) %>%
-          dplyr::rename_with(~sprintf('%s2_naive', .x), dplyr::matches('_d$')) %>%
-          dplyr::select(-idx_closest),
+          filter(idx_closest == 2L) %>%
+          rename_with(~sprintf('%s2_naive', .x), matches('_d$')) %>%
+          select(-idx_closest),
         by = c('game_id', 'play_id', 'frame_id', 'event', 'nfl_id')
       ) %>%
       # Add closest offensive players.
-      dplyr::left_join(
+      left_join(
         min_dists_naive_o,
         by = c('game_id', 'play_id', 'frame_id', 'event', 'nfl_id')
       ) %>%
       # Add closest defender to qb.
-      dplyr::left_join(
+      left_join(
         min_dists_naive_qb,
         by = c('game_id', 'play_id', 'frame_id', 'event')
       ) %>%
       # Add "static" info for each frame.
-      dplyr::left_join(
+      left_join(
         frames %>%
-          dplyr::select(
-            .data$game_id,
-            .data$play_id,
-            .data$frame_id,
-            .data$event,
-            .data$nfl_id,
-            .data$ball_x,
-            .data$ball_y,
-            # .data$fd,
-            .data$yards_to_go,
-            .data$los
+          select(
+            game_id,
+            play_id,
+            frame_id,
+            event,
+            nfl_id,
+            ball_x,
+            ball_y,
+            # fd,
+            yards_to_go,
+            los
           ),
         by = c('game_id', 'play_id', 'frame_id', 'event', 'nfl_id')
       ) %>%
-      dplyr::left_join(targets, by = 'nfl_id') %>% 
-      dplyr::mutate(
-        dist_ball = .dist(.data$x, .data$ball_x, .data$y, .data$ball_y),
-        dist_ball_o = .dist(.data$x_o, .data$ball_x, .data$y_o, .data$ball_y),
-        dist_ball_d1_naive = .dist(.data$x_d1_naive, .data$ball_x, .data$y_d1_naive, .data$ball_y),
-        dist_ball_d2_naive = .dist(.data$x_d2_naive, .data$ball_x, .data$y_d2_naive, .data$ball_y),
-        dist_qb = .dist(.data$x, .data$qb_x, .data$y, .data$qb_y),
-        dist_qb_o = .dist(.data$x_o, .data$qb_x, .data$y_o, .data$qb_y),
-        dist_ball_d1_naive = .dist(.data$x_d1_naive, .data$qb_x, .data$y_d1_naive, .data$qb_y),
-        dist_ball_d2_naive = .dist(.data$x_d2_naive, .data$qb_x, .data$y_d2_naive, .data$qb_y),
-        dist_los = .data$x -  .data$los
+      left_join(targets, by = 'nfl_id') %>% 
+      mutate(
+        dist_ball = .dist(x, ball_x, y, ball_y),
+        dist_ball_o = .dist(x_o, ball_x, y_o, ball_y),
+        dist_ball_d1_naive = .dist(x_d1_naive, ball_x, y_d1_naive, ball_y),
+        dist_ball_d2_naive = .dist(x_d2_naive, ball_x, y_d2_naive, ball_y),
+        dist_qb = .dist(x, qb_x, y, qb_y),
+        dist_qb_o = .dist(x_o, qb_x, y_o, qb_y),
+        dist_ball_d1_naive = .dist(x_d1_naive, qb_x, y_d1_naive, qb_y),
+        dist_ball_d2_naive = .dist(x_d2_naive, qb_x, y_d2_naive, qb_y),
+        dist_los = x -  los
       ) %>% 
       distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
       group_by(game_id, play_id, frame_id) %>% 
@@ -1481,24 +1492,24 @@ import_routes <- function() {
 import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = import_routes()) {
   .path_data_big_parquet(sprintf('target_prob_features_%s', suffix)) %>% 
     arrow::read_parquet() %>% 
-    # dplyr::left_join(
-    #   routes %>% dplyr::select(-.data$week),
+    # left_join(
+    #   routes %>% select(-week),
     #   by = c('game_id', 'play_id', 'nfl_id')
     # ) %>% 
-    dplyr::filter(!is.na(route))
+    filter(!is.na(route))
 }
 
 # 3. functions for target prob ----
 .augment_target_probs <- function(v, features_df, features, col_y, export = TRUE, path) {
   # browser()
-  col_y_sym <- col_y %>% dplyr::sym()
+  col_y_sym <- col_y %>% sym()
   probs_init <-
     v %>% 
-    dplyr::tibble(.prob_1 = .) %>% 
-    dplyr::mutate(.prob_0 = 1 - .prob_1) %>% 
-    dplyr::bind_cols(
+    tibble(.prob_1 = .) %>% 
+    mutate(.prob_0 = 1 - .prob_1) %>% 
+    bind_cols(
       features_df %>% 
-        dplyr::select(
+        select(
           idx,
           game_id, 
           play_id, 
@@ -1508,9 +1519,9 @@ import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = im
           !!col_y
         )
     ) %>% 
-    dplyr::inner_join(
+    inner_join(
       features %>%
-        dplyr::select(
+        select(
           # idx,
           game_id,
           play_id,
@@ -1522,48 +1533,48 @@ import_target_prob_features <- function(suffix = c('minmax', 'all'), routes = im
   
   probs_init_bad <-
     probs_init %>% 
-    dplyr::count(idx) %>% 
-    dplyr::filter(n > 1L)
+    count(idx) %>% 
+    filter(n > 1L)
   
   probs_init <-
     probs_init %>% 
-    dplyr::group_by(game_id, play_id, frame_id) %>% 
-    dplyr::mutate(dplyr::across(.prob_1, list(norm = ~ .x / sum(.x)))) %>%
-    dplyr::ungroup() %>%
-    # dplyr::mutate(.prob_0_norm = 1 - .prob_1_norm) %>%
-    dplyr::select(
+    group_by(game_id, play_id, frame_id) %>% 
+    mutate(across(.prob_1, list(norm = ~ .x / sum(.x)))) %>%
+    ungroup() %>%
+    # mutate(.prob_0_norm = 1 - .prob_1_norm) %>%
+    select(
       idx,
       game_id,
       play_id,
       frame_id,
-      dplyr::matches('nfl_id'),
+      matches('nfl_id'),
       idx_o,
       !!col_y_sym,
-      dplyr::matches('prob_0'),
-      dplyr::matches('prob_1')
+      matches('prob_0'),
+      matches('prob_1')
     )
   probs_init
   
-  probs_init <- probs_init %>% dplyr::anti_join(probs_init_bad)
+  probs_init <- probs_init %>% anti_join(probs_init_bad)
   
   probs_max <-
     probs_init %>% 
-    dplyr::group_by(game_id, play_id) %>% 
+    group_by(game_id, play_id) %>% 
     # filter(.prob_1_norm == max(.prob_1_norm)) %>% 
-    dplyr::slice_max(.prob_1_norm, with_ties = FALSE) %>% 
-    dplyr::ungroup() %>% 
-    dplyr::mutate(.prob_class = 1L)
+    slice_max(.prob_1_norm, with_ties = FALSE) %>% 
+    ungroup() %>% 
+    mutate(.prob_class = 1L)
   probs_max
   
   probs <-
     probs_init %>%
-    dplyr::left_join(
+    left_join(
       probs_max %>% 
-        dplyr::select(game_id, play_id, nfl_id, .prob_class)
+        select(game_id, play_id, nfl_id, .prob_class)
     ) %>% 
-    dplyr::mutate(
-      dplyr::across(.prob_class, ~dplyr::coalesce(.x, 0L) %>% factor()),
-      dplyr::across(!!col_y_sym, factor)
+    mutate(
+      across(.prob_class, ~coalesce(.x, 0L) %>% factor()),
+      across(!!col_y_sym, factor)
     )
   if(!export) {
     return(probs)
@@ -1636,7 +1647,7 @@ binary_fct_to_lgl <- function(x) {
 .get_feature_labs <- memoise::memoise({function() {
   tibble(
     feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
-    feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball closest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
+    feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball cand losest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
   )
 }})
 
@@ -1650,14 +1661,14 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   features <- 
     import_target_prob_features(suffix = .suffix) %>%
-    dplyr::semi_join(plays %>% dplyr::select(game_id, play_id), by = c('game_id', 'play_id')) %>% 
+    semi_join(plays %>% select(game_id, play_id), by = c('game_id', 'play_id')) %>% 
     distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>% 
-    dplyr::mutate(idx = dplyr::row_number()) %>% 
-    dplyr::relocate(idx)
+    mutate(idx = row_number()) %>% 
+    relocate(idx)
   
   features_start <-
     features %>% 
-    dplyr::filter(event == 'ball_snap')
+    filter(event == 'ball_snap')
   
   if (cnd == 'start') {
     extra_features <- NULL
@@ -1667,14 +1678,14 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     extra_features <- 'sec'
     features_x <- 
       features %>% 
-      dplyr::filter(event != 'ball_snap')
+      filter(event != 'ball_snap')
     
     caption <- NULL
   } else if(cnd == 'all') {
     extra_features <- 'sec'
     set.seed(42)
     # Data is too large to tune on everything
-    features_x <- features %>% dplyr::sample_frac(0.1)
+    features_x <- features %>% sample_frac(0.1)
     caption <- glue::glue(
       'Relative target share rank, receiver position, QB orientation, and various distance-based features 
        are most important for predicting which receiver will be targeted at any point after the snap.'
@@ -1748,16 +1759,16 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   features_df <-
     features_x %>% 
-    dplyr::left_join(
+    left_join(
       features_start %>% 
-        dplyr::select(game_id, play_id, nfl_id, frame_id_start = frame_id)
+        select(game_id, play_id, nfl_id, frame_id_start = frame_id)
     ) %>% 
-    dplyr::mutate(sec = 0.1 * (frame_id - frame_id_start)) %>% 
-    dplyr::select(dplyr::any_of(cols_lst$cols_keep)) %>% 
-    # tidyr::drop_na() %>% 
+    mutate(sec = 0.1 * (frame_id - frame_id_start)) %>% 
+    select(any_of(cols_lst$cols_keep)) %>% 
+    # drop_na() %>% 
     filter(!is.na(idx_o) & !is.na(qb_o)) %>% 
-    dplyr::mutate(idx = dplyr::row_number()) %>% 
-    dplyr::relocate(idx)
+    mutate(idx = row_number()) %>% 
+    relocate(idx)
   features_df
   
   features_mat <- 
@@ -1765,8 +1776,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       ~.+0, 
       data = 
         features_df %>%
-        dplyr::select(dplyr::one_of(cols_lst$cols_keep)) %>% 
-        dplyr::select(-dplyr::one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
+        select(one_of(cols_lst$cols_keep)) %>% 
+        select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
     )
   features_mat
   
@@ -1776,7 +1787,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       label = features_df[[cols_lst$col_y]]
     )
   
-  col_y_sym <- cols_lst$col_y %>% dplyr::sym()
+  col_y_sym <- cols_lst$col_y %>% sym()
   features_df_filt <-
     features_df %>% 
     filter(!is.na(!!col_y_sym)) %>% 
@@ -1808,18 +1819,18 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   # `folds` comes up in 2 places, so don't put it in an if clause.
   set.seed(42)
-  play_ids <- features_df %>% dplyr::distinct(game_id, play_id) %>% dplyr::mutate(idx_play = dplyr::row_number())
+  play_ids <- features_df_filt %>% distinct(game_id, play_id) %>% mutate(idx_play = row_number())
   # caret::createFolds(features_df[[cols_lst$col_y]], k = 10, list = TRUE, returnTrain = FALSE) %>% flatten_int() %>% length()
   folds_ids <- caret::createFolds(play_ids$idx_play, k = 10, list = FALSE, returnTrain = FALSE)
   # names(folds_ids) <- NULL
   
   folds <-
     play_ids %>% 
-    dplyr::bind_cols(dplyr::tibble(fold = folds_ids)) %>% 
-    dplyr::left_join(features_df %>% dplyr::select(game_id, play_id, idx)) %>% 
-    dplyr::select(fold, idx) %>% 
+    bind_cols(tibble(fold = folds_ids)) %>% 
+    left_join(features_df_filt %>% select(game_id, play_id, idx)) %>% 
+    select(fold, idx) %>% 
     split(.$fold) %>% 
-    purrr::map(~dplyr::select(.x, -fold) %>% dplyr::pull(idx))
+    purrr::map(~select(.x, -fold) %>% pull(idx))
   
   if(!file.exists(path_res_tune_cv) & !overwrite) {
     
@@ -1834,7 +1845,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         sample_size = dials::sample_prop(),
         size = n_row
       ) %>% 
-      dplyr::mutate(
+      mutate(
         learn_rate = 0.1 * ((1:n_row) / n_row),
         mtry = mtry / length(features_df)
       )
@@ -1882,15 +1893,15 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         res$logloss_tst = fit_cv$evaluation_log[res$iter]$test_logloss_mean
         
         res[['eval_metric']] <- NULL
-        res <- dplyr::bind_rows(res)
+        res <- bind_rows(res)
         readr::write_rds(res, path)
         res
       }
     
-    res_tune_cv <- purrr::map_df(1:n_row, function(i) {
+    res_tune_cv <- purrr::map_df(1:n_row, function(row) {
       
-      cat(glue::glue('Row {cli::bg_cyan(i)} (of {cli::bg_cyan(n_row)})'), sep = '\n')
-      .get_metrics(grid_params %>% dplyr::slice(i), row = i)
+      cat(glue::glue('Row {cli::bg_cyan(row)} (of {cli::bg_cyan(n_row)})'), sep = '\n')
+      .get_metrics(data = grid_params %>% slice(row), row = row)
       
     })
     res_tune_cv %>% readr::write_rds(path_res_tune_cv)
@@ -1900,8 +1911,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   # 19th
   # These can be used in the next 2 ifelse clauses. Easiest to just always run this.
-  # res_tune_cv %>% mutate(idx = row_number()) %>% relocate(idx) %>% dplyr::slice_min(logloss_tst)
-  res_cv_best <- res_tune_cv %>% dplyr::slice_min(logloss_tst)
+  # res_tune_cv %>% mutate(idx = row_number()) %>% relocate(idx) %>% slice_min(logloss_tst)
+  res_cv_best <- res_tune_cv %>% slice_min(logloss_tst)
   
   .f <- function(x) {
     res_cv_best %>% purrr::pluck(x)
@@ -1927,15 +1938,17 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     features_x <- features
     features_df <-
       features_x %>% 
-      dplyr::left_join(
+      left_join(
         features_start %>% 
-          dplyr::select(game_id, play_id, nfl_id, frame_id_start = frame_id)
+          select(game_id, play_id, nfl_id, frame_id_start = frame_id)
       ) %>% 
-      dplyr::mutate(sec = frame_id - frame_id_start) %>% 
-      dplyr::select(dplyr::any_of(cols_lst$cols_keep)) %>% 
-      tidyr::drop_na() %>% 
-      dplyr::mutate(idx = dplyr::row_number()) %>% 
-      dplyr::relocate(idx)
+      mutate(sec = frame_id - frame_id_start) %>% 
+      select(any_of(cols_lst$cols_keep)) %>% 
+      filter(!is.na(idx_o) & !is.na(qb_o)) %>% 
+      # Can only predict out of bag on labeled plays.
+      filter(!is.na(!!col_y_sym)) %>% 
+      mutate(idx = row_number()) %>% 
+      relocate(idx)
     features_df
     
     features_mat <- 
@@ -1943,8 +1956,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         ~.+0, 
         data = 
           features_df %>%
-          dplyr::select(dplyr::one_of(cols_lst$cols_keep)) %>% 
-          dplyr::select(-dplyr::one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
+          select(one_of(cols_lst$cols_keep)) %>% 
+          select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
       )
     features_mat
     
@@ -1955,18 +1968,18 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       )
     
     set.seed(42)
-    play_ids <- features_df %>% dplyr::distinct(game_id, play_id) %>% dplyr::mutate(idx_play = dplyr::row_number())
+    play_ids <- features_df %>% distinct(game_id, play_id) %>% mutate(idx_play = row_number())
     
     folds_ids <- caret::createFolds(play_ids$idx_play, k = 10, list = FALSE, returnTrain = FALSE)
     # names(folds_ids) <- NULL
     
     folds <-
       play_ids %>% 
-      dplyr::bind_cols(dplyr::tibble(fold = folds_ids)) %>% 
-      dplyr::left_join(features_df %>% dplyr::select(game_id, play_id, idx)) %>% 
-      dplyr::select(fold, idx) %>% 
+      bind_cols(tibble(fold = folds_ids)) %>% 
+      left_join(features_df %>% select(game_id, play_id, idx)) %>% 
+      select(fold, idx) %>% 
       split(.$fold) %>% 
-      purrr::map(~dplyr::select(.x, -fold) %>% dplyr::pull(idx))
+      purrr::map(~select(.x, -fold) %>% pull(idx))
   }
   
   # Train on everything, including plays without a targeted receiver.
@@ -1986,6 +1999,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     fit <- xgboost::xgb.load(path_fit)
   }
   
+  # TODO: Make this compatible with plays with NA targeted receiver.
   .augment_target_probs_x <-
     purrr::partial(
       .augment_target_probs,
@@ -1996,12 +2010,10 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       ... =
     )
   
-  # Can only predict out of bag on labeled plays, so use `_filt` here.
   if(!file.exists(path_probs)) {
-    # debugonce(.augment_target_probs)
     probs <-
       fit %>% 
-      predict(features_dmat_filt, type = 'prob') %>% 
+      predict(features_dmat, type = 'prob') %>% 
       .augment_target_probs_x(path = path_probs)
     probs 
   } else {
@@ -2009,7 +2021,24 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   }
   
   if(!file.exists(path_res_cv) | !file.exists(path_probs_oob) & !overwrite) {
+
+    features_mat <- 
+      model.matrix(
+        ~.+0, 
+        data = 
+          features_df %>%
+          select(one_of(cols_lst$cols_keep)) %>% 
+          select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
+      )
+    features_mat
     
+    features_dmat <-
+      xgboost::xgb.DMatrix(
+        features_mat,
+        label = features_df[[cols_lst$col_y]]
+      )
+    
+    # was stopping early at 10
     fit_cv <-
       xgboost::xgb.cv(
         prediction = TRUE,
@@ -2018,13 +2047,13 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         nrounds = .nrounds,
         folds = folds, 
         metrics = .eval_metrics,
-        early_stopping_rounds = 20, # was stopping early at 10
+        early_stopping_rounds = 20,
         print_every_n = 10
       )
     
     res_cv <-
       fit_cv$evaluation_log %>% 
-      dplyr::as_tibble()
+      as_tibble()
     res_cv %>% arrow::write_parquet(path_res_cv)
     
     probs_oob <-
@@ -2036,81 +2065,27 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     probs_oob <- path_probs_oob %>% arrow::read_parquet()
     
   }
-  
-  # if(!file.exists(path_roc_curve) | !file.exists(path_roc_curve_compare) & !overwrite) {
-  #   
-  #   roc_curve <-
-  #     dplyr::bind_rows(
-  #       probs %>% 
-  #         yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
-  #         dplyr::mutate(set = 'Full data'),
-  #       probs_oob %>% 
-  #         yardstick::roc_curve(!!col_y_sym, .prob_0) %>% 
-  #         dplyr::mutate(set = 'Out-of-bag')
-  #     )
-  #   
-  #   viz_roc_curve <-
-  #     roc_curve %>% 
-  #     dplyr::filter(set == 'Full data') %>% 
-  #     ggplot2::ggplot() +
-  #     ggplot2::aes(x = 1 - specificity, y = sensitivity) +
-  #     ggplot2::geom_path(size = 1) +
-  #     ggplot2::geom_abline(size = 1, lty = 2) +
-  #     ggplot2::coord_equal() +
-  #     ggplot2::labs(
-  #       title = 'Target probability ROC Curve',
-  #       caption = caption
-  #     )
-  #   
-  #   viz_roc_curve_compare <-
-  #     roc_curve %>% 
-  #     ggplot2::ggplot() +
-  #     ggplot2::aes(x = 1 - specificity, y = sensitivity) +
-  #     ggplot2::geom_path(aes(color = set, group = set), size = 1) +
-  #     ggplot2::geom_abline(size = 1, lty = 2) +
-  #     ggplot2::guides(
-  #       color = guide_legend('', override.aes = list(size = 3))
-  #     ) +
-  #     ggplot2::coord_equal() +
-  #     ggplot2::theme(
-  #       legend.position = 'top'
-  #     ) +
-  #     ggplot2::labs(
-  #       title = 'Target probability ROC Curve',
-  #       caption = caption
-  #     )
-  #   
-  #   save_plot(
-  #     viz_roc_curve_compare,
-  #     path = path_roc_curve_compare
-  #   )
-  #   
-  #   save_plot(
-  #     viz_roc_curve,
-  #     path = path_roc_curve
-  #   )
-  # }
-  
+
   if(!file.exists(path_shap) & !overwrite) {
     
     # Downsize to just 10% of the data again for shap stuff.
     if(cnd == 'all') {
       set.seed(42)
       # browser()
-      probs <- probs %>% dplyr::sample_frac(0.1)
+      probs <- probs %>% sample_frac(0.1)
       set.seed(42)
       features_df <-
         features_x %>% 
-        dplyr::sample_frac(0.1) %>% 
-        dplyr::left_join(
+        sample_frac(0.1) %>% 
+        left_join(
           features_start %>% 
-            dplyr::select(game_id, play_id, nfl_id, frame_id_start = frame_id)
+            select(game_id, play_id, nfl_id, frame_id_start = frame_id)
         ) %>% 
-        dplyr::mutate(sec = frame_id - frame_id_start) %>% 
-        dplyr::select(dplyr::any_of(cols_lst$cols_keep)) %>% 
-        tidyr::drop_na() %>% 
-        dplyr::mutate(idx = dplyr::row_number()) %>% 
-        dplyr::relocate(idx)
+        mutate(sec = frame_id - frame_id_start) %>% 
+        select(any_of(cols_lst$cols_keep)) %>% 
+        drop_na() %>% 
+        mutate(idx = row_number()) %>% 
+        relocate(idx)
       features_df
       
       features_mat <- 
@@ -2118,8 +2093,8 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
           ~.+0, 
           data = 
             features_df %>%
-            dplyr::select(dplyr::one_of(cols_lst$cols_keep)) %>% 
-            dplyr::select(-dplyr::one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
+            select(one_of(cols_lst$cols_keep)) %>% 
+            select(-one_of(c(cols_lst$col_y, cols_lst$cols_id, cols_lst$cols_id_model)))
         )
       features_mat
     }
@@ -2127,33 +2102,33 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     feature_values_init <-
       features_mat %>%
       as.data.frame() %>%
-      dplyr::mutate_all(scale) %>%
-      tidyr::gather('feature', 'feature_value') %>% 
-      dplyr::as_tibble()
+      mutate_all(scale) %>%
+      gather('feature', 'feature_value') %>% 
+      as_tibble()
     feature_values_init
     
     feature_values <-
       feature_values_init %>% 
-      dplyr::pull(feature_value)
+      pull(feature_value)
     feature_values
     
     shap_init <-
       fit %>% 
       predict(newdata = features_mat, predcontrib = TRUE) %>%
       as.data.frame() %>%
-      dplyr::as_tibble() %>% 
-      dplyr::select(-dplyr::matches('BIAS'))
+      as_tibble() %>% 
+      select(-matches('BIAS'))
     shap_init
     
     shap <-
       shap_init %>%
-      dplyr::bind_cols(features_df %>% dplyr::select(idx)) %>%
-      dplyr::left_join(
+      bind_cols(features_df %>% select(idx)) %>%
+      left_join(
         probs %>%
-          dplyr::select(prob = .prob_1_norm) %>%
-          dplyr::mutate(idx = dplyr::row_number())
+          select(prob = .prob_1_norm) %>%
+          mutate(idx = row_number())
       ) %>%
-      tidyr::pivot_longer(-c(idx, prob), names_to = 'feature', values_to = 'shap_value')
+      pivot_longer(-c(idx, prob), names_to = 'feature', values_to = 'shap_value')
     shap
     
     shap %>% arrow::write_parquet(path_shap)
@@ -2163,24 +2138,24 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   shap_agg_by_feature <-
     shap %>% 
-    dplyr::group_by(feature) %>% 
-    dplyr::summarize(
-      dplyr::across(shap_value, ~mean(abs(.x))),
+    group_by(feature) %>% 
+    summarize(
+      across(shap_value, ~mean(abs(.x))),
     ) %>% 
-    dplyr::ungroup() %>% 
-    dplyr::mutate(
-      dplyr::across(shap_value, list(rnk = ~dplyr::row_number(dplyr::desc(.x))))
+    ungroup() %>% 
+    mutate(
+      across(shap_value, list(rnk = ~row_number(desc(.x))))
     ) %>% 
-    dplyr::arrange(shap_value_rnk)
+    arrange(shap_value_rnk)
   shap_agg_by_feature
   
-  features_labs <- .get_feature_labs()
+  feature_labs <- .get_feature_labs()
   
   .prep_viz_data <- function(data) {
     data %>% 
-      dplyr::left_join(feature_labs) %>% 
-      dplyr::mutate(
-        dplyr::across(
+      left_join(feature_labs) %>% 
+      mutate(
+        across(
           feature_lab, ~forcats::fct_reorder(.x, -shap_value_rnk)
         )
       )
@@ -2191,22 +2166,22 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   #   set.seed(42)
   #   shap_sample <- 
   #     shap %>% 
-  #     dplyr::group_by(feature) %>% 
-  #     dplyr::sample_frac(0.1) %>% 
-  #     dplyr::ungroup() %>% 
+  #     group_by(feature) %>% 
+  #     sample_frac(0.1) %>% 
+  #     ungroup() %>% 
   #     mutate(prnk = percent_rank(prob))
   #   
   #   viz_shap_swarm <-
   #     shap_sample %>%
-  #     dplyr::left_join(
+  #     left_join(
   #       shap_agg_by_feature %>% 
-  #         dplyr::select(feature, shap_value_rnk)
+  #         select(feature, shap_value_rnk)
   #     ) %>%
   #     .prep_viz_data() %>%
-  #     ggplot2::ggplot() +
-  #     ggplot2::aes(y = feature_lab, x = shap_value) +
+  #     ggplot() +
+  #     aes(y = feature_lab, x = shap_value) +
   #     ggbeeswarm::geom_quasirandom(
-  #       ggplot2::aes(color = prnk),
+  #       aes(color = prnk),
   #       alpha = 0.5,
   #       groupOnX = FALSE,
   #       varwidth = TRUE,
@@ -2214,17 +2189,17 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   #     scico::scale_color_scico(
   #       palette = 'berlin'
   #     ) +
-  #     ggplot2::guides(
-  #       color = ggplot2::guide_legend('Probability', override.aes = list(size = 3, alpha = 1))
+  #     guides(
+  #       color = guide_legend('Probability', override.aes = list(size = 3, alpha = 1))
   #     ) +
   #     scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
   #     # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
-  #     ggplot2::theme(
+  #     theme(
   #       legend.position = 'top',
   #       axis.text.y = element_text(size = 12, lineheight = 1),
-  #       panel.grid.major.y = ggplot2::element_blank()
+  #       panel.grid.major.y = element_blank()
   #     ) +
-  #     ggplot2::labs(
+  #     labs(
   #       title = 'Target probability model feature importance',
   #       subtitle = caption,
   #       x = 'SHAP value',
@@ -2242,18 +2217,18 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     viz_shap_agg <- 
       shap_agg_by_feature %>% 
       .prep_viz_data() %>% 
-      ggplot2::ggplot() +
-      ggplot2::aes(y = feature_lab, x = shap_value) +
-      ggplot2::geom_col() +
+      ggplot() +
+      aes(y = feature_lab, x = shap_value) +
+      geom_col() +
       scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
       # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
-      ggplot2::theme(
+      theme(
         axis.text.y = element_text(size = 12, lineheight = 1),
-        panel.grid.major.y = ggplot2::element_blank()
+        panel.grid.major.y = element_blank()
       ) +
-      ggplot2::labs(
+      labs(
         title = 'Target probability model feature importance',
-        subtitle = caption,
+        # subtitle = caption,
         x = 'mean(|SHAP value|)',
         y = NULL
       )
@@ -2269,7 +2244,14 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   if((!file.exists(path_metrics) | !file.exists(path_metrics_gt) | !file.exists(path_metrics_compare_gt)) & !overwrite) {
     
-    # multiclass
+    frames_first <-
+      probs %>%
+      select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
+      group_by(game_id, play_id) %>%
+      slice_min(frame_id) %>%
+      ungroup()
+    frames_first
+    
     frames_last <-
       probs %>%
       select(game_id, play_id, nfl_id, frame_id, idx_o, is_target) %>%
@@ -2286,7 +2268,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       select(-nfl_id, -is_target)
     target_idx
     
-    .prep_multiclass <- function(data, f = yardstick::accuracy) {
+    .do_multiclass <- function(data, f = yardstick::accuracy) {
       data %>% 
         # semi_join(frames_last) %>%
         left_join(target_idx) %>%
@@ -2296,6 +2278,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         mutate(across(matches('^idx_o'), factor)) %>% 
         f(idx_o, idx_o_target)
     }
+    
     acc <-
       probs %>% 
       yardstick::accuracy(!!col_y_sym, .prob_class)
@@ -2306,58 +2289,69 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       yardstick::accuracy(!!col_y_sym, .prob_class)
     acc_oob
     
+    acc_first <-
+      probs %>% 
+      semi_join(frames_first) %>% 
+      yardstick::accuracy(!!col_y_sym, .prob_class)
+    acc_first
+    
     acc_last <-
       probs %>% 
       semi_join(frames_last) %>% 
       yardstick::accuracy(!!col_y_sym, .prob_class)
+    acc_last
     
-    acc_m_last <-
+    acc_m <-
       probs %>% 
-      semi_join(frames_last) %>%
+      # semi_join(frames_last) %>%
       .do_multiclass(f = yardstick::accuracy)
+    acc_m
     
     auc <-
       probs %>% 
+      mutate(.prob_0_norm = 1 - .prob_1_norm) %>% 
       yardstick::roc_auc(!!col_y_sym, .estimate = .prob_0_norm)
     auc
     
     auc_oob <-
       probs_oob %>% 
+      mutate(.prob_0_norm = 1 - .prob_1_norm) %>% 
       yardstick::roc_auc(!!col_y_sym, .estimate = .prob_0_norm)
     auc_oob
     
     brier <-
       probs %>% 
-      dplyr::mutate(dplyr::across(!!col_y_sym, binary_fct_to_int)) %>% 
+      mutate(across(!!col_y_sym, binary_fct_to_int)) %>% 
       mse(!!col_y_sym, .prob_1)
+    brier
     
     brier_oob <-
       probs_oob %>% 
-      dplyr::mutate(dplyr::across(!!col_y_sym, binary_fct_to_int)) %>% 
+      mutate(across(!!col_y_sym, binary_fct_to_int)) %>% 
       mse(!!col_y_sym, .prob_1)
     
-    ll <-
-      probs %>% 
-      yardstick::mn_log_loss(!!col_y_sym, .prob_1)
+    # ll <-
+    #   probs %>% 
+    #   yardstick::mn_log_loss(!!col_y_sym, .prob_1)
+    # 
+    # ll_oob <-
+    #   probs_oob %>% 
+    #   yardstick::mn_log_loss(!!col_y_sym, .prob_1)
     
-    ll_oob <-
-      probs_oob %>% 
-      yardstick::mn_log_loss(!!col_y_sym, .prob_1)
-    
-    n_metric <- 4
+    n_metric <- 3
     metrics <-
-      dplyr::tibble(
+      tibble(
         set = c(rep('full', n_metric), rep('oob', n_metric)),
-        value = list(acc, auc, brier, ll, acc_oob, auc_oob, brier_oob, ll_oob)
+        value = list(acc, auc, brier, acc_oob, auc_oob, brier_oob, ll_oob)
       ) %>% 
-      tidyr::unnest(value) %>% 
-      dplyr::arrange(.metric, set)
+      unnest(value) %>% 
+      arrange(.metric, set)
     metrics
     
     metrics_gt <-
       metrics %>% 
-      dplyr::filter(set == 'full') %>% 
-      dplyr::select(-.estimator, -set) %>% 
+      filter(set == 'full') %>% 
+      select(-.estimator, -set) %>% 
       gt::gt() %>% 
       gt::cols_label(
         .list = 
@@ -2366,15 +2360,15 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
             .estimate = gt::md('**Estimate**')
           )
       ) %>% 
-      gt::fmt_number(columns = dplyr::vars(.estimate), decimals = 2)
+      gt::fmt_number(columns = vars(.estimate), decimals = 2)
     
     metrics_gt_compare <-
       metrics %>% 
-      dplyr::select(-.estimator) %>% 
-      dplyr::mutate(
-        dplyr::across(
+      select(-.estimator) %>% 
+      mutate(
+        across(
           set,
-          ~dplyr::case_when(
+          ~case_when(
             .x == 'full' ~ 'Full data',
             TRUE ~ 'Out-of-bag'
           )
@@ -2389,7 +2383,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
             set = gt::md('**Set**')
           )
       ) %>% 
-      gt::fmt_number(columns = dplyr::vars(.estimate), decimals = 2)
+      gt::fmt_number(columns = vars(.estimate), decimals = 2)
     
     gt::gtsave(metrics_gt, path_metrics_gt)
     gt::gtsave(metrics_gt_compare, path_metrics_compare_gt)
@@ -2400,14 +2394,14 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
 
 .augment_catch_probs <- function(v, features_df, features, col_y, export = TRUE, path) {
   # browser()
-  col_y_sym <- col_y %>% dplyr::sym()
+  col_y_sym <- col_y %>% sym()
   probs_init <-
     v %>% 
-    dplyr::tibble(.prob_1 = .) %>% 
-    dplyr::mutate(.prob_0 = 1 - .prob_1) %>% 
-    dplyr::bind_cols(
+    tibble(.prob_1 = .) %>% 
+    mutate(.prob_0 = 1 - .prob_1) %>% 
+    bind_cols(
       features_df %>% 
-        dplyr::select(
+        select(
           idx,
           game_id, 
           play_id, 
@@ -2417,9 +2411,9 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
           !!col_y
         )
     ) %>% 
-    dplyr::inner_join(
+    inner_join(
       features %>%
-        dplyr::select(
+        select(
           # idx,
           game_id,
           play_id,
@@ -2430,30 +2424,30 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   
   probs_init_bad <-
     probs_init %>% 
-    dplyr::count(idx) %>% 
-    dplyr::filter(n > 1L)
+    count(idx) %>% 
+    filter(n > 1L)
   
   probs_init <-
     probs_init %>% 
-    dplyr::select(
+    select(
       idx,
       game_id,
       play_id,
       frame_id,
-      dplyr::matches('nfl_id'),
+      matches('nfl_id'),
       idx_o,
       !!col_y_sym,
-      dplyr::matches('prob_0'),
-      dplyr::matches('prob_1')
+      matches('prob_0'),
+      matches('prob_1')
     )
   probs_init
   
-  probs_init <- probs_init %>% dplyr::anti_join(probs_init_bad)
+  probs_init <- probs_init %>% anti_join(probs_init_bad)
   
   probs <-
     probs_init %>%
-    dplyr::mutate(
-      dplyr::across(!!col_y_sym, factor)
+    mutate(
+      across(!!col_y_sym, factor)
     )
   if(!export) {
     return(probs)
@@ -2720,7 +2714,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays(), overwri
         res$logloss_tst = fit_cv$evaluation_log[res$iter]$test_logloss_mean
         
         res[['eval_metric']] <- NULL
-        res <- dplyr::bind_rows(res)
+        res <- bind_rows(res)
         readr::write_rds(res, path)
         res
       }
@@ -2728,7 +2722,7 @@ do_fit_catch_prob_model <- function(cnd = 'all', plays = import_plays(), overwri
     res_tune_cv <- purrr::map_df(1:n_row, function(i) {
       
       cat(glue::glue('Row {cli::bg_cyan(i)} (of {cli::bg_cyan(n_row)})'), sep = '\n')
-      .get_metrics(grid_params %>% dplyr::slice(i), row = i)
+      .get_metrics(grid_params %>% slice(i), row = i)
       
     })
     res_tune_cv %>% readr::write_rds(path_res_tune_cv)
@@ -2802,6 +2796,7 @@ do_combine_target_probs_and_dists <-
            catch_probs = import_catch_probs(),
            min_dists_naive = import_min_dists_naive(),
            plays = import_plays(),
+           personnel_and_rushers = import_personnel_and_rushers(),
            overwrite = FALSE,
            path = .path_data_big_parquet('probs_dists'),
            ...) {
@@ -2878,9 +2873,12 @@ do_combine_target_probs_and_dists <-
     .power <- 2
     ids <- probs_aug %>% distinct(game_id, play_id)
     
+    rushers <- personnel_and_rushers %>% select(game_id, play_id, rushers) %>% unnest(rushers) 
+    
     min_dists_init <- 
-      import_min_dists_naive() %>%
+      min_dists_naive %>% 
       semi_join(ids) %>% 
+      anti_join(rushers %>% select(-frame_id) %>% rename(nfl_id_d = nfl_id)) %>% 
       distinct(game_id, play_id, frame_id, nfl_id, nfl_id_d, dist_d)
     min_dists_init
     
@@ -2912,7 +2910,7 @@ do_combine_target_probs_and_dists <-
           select(game_id, play_id, nfl_id, nfl_id_d, wt, dist_d) %>% 
           rename_with(~sprintf('%s_%s', .x, 'start'), -c(game_id, play_id, nfl_id, nfl_id_d))
       )
-    rm('min_dists', 'min_dists_init', 'min_dists_start')
+    rm('min_dists', 'min_dists_init', 'min_dists_start', 'personnel_and_rushers', 'rushers')
     rm('ids', 'probs')
     
     probs_dists <-

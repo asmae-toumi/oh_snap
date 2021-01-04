@@ -52,19 +52,21 @@ fs::dir_ls(
   map(arrow::read_parquet) %>% 
   reduce(bind_rows) %>% 
   distinct(game_id, play_id, frame_id, nfl_id, nfl_id_d, .keep_all = TRUE) %>% 
+  a
   arrow::write_parquet(.path_data_big_parquet('min_dists_naive_all'))
-
+# min_dists_naive <- import_min_dists_naive()
+# min_dists_naive %>% semi_join(rushers %>% rename(nfl_id_d = nfl_id))
 do_fit_target_prob_model()
 do_fit_catch_prob_model()
 }
 
 # eval stuff ----
+probs_dists <- do_combine_target_probs_and_dists(overwrite = TRUE)
+
 plays <- import_plays()
 
 # Only need to import this if didn't run stuff above in the same session.
 players_from_tracking <- import_players_from_tracking()
-
-probs_dists <- do_combine_target_probs_and_dists()
 
 # Gilmore's id is 2533062, per `import_players_from_tracking() %>% filter(display_name == 'Stephon Gilmore')`
 nfl_id_example <- 2533062
@@ -86,7 +88,8 @@ probs_dists_end <-
     nfl_id_d
   ) %>% 
   slice_max(frame_id, with_ties = FALSE) %>%
-  ungroup()
+  ungroup() %>% 
+  filter(prob_wt > 0)
 
 diffs_by_play <-
   probs_dists_end %>%
@@ -128,6 +131,12 @@ if(FALSE) {
 # Play chosen based on above criteria. It also happens to be interesting cuz of the blitz component.
 game_id_example <- 2018112505
 play_id_example <- 2716
+
+.filter_example <- function(data) {
+  data %>% 
+    filter(game_id == !!game_id_example, play_id == !!play_id_example)
+}
+
 animate_play(
   game_id = game_id_example, 
   play_id = play_id_example, 
@@ -148,6 +157,16 @@ for(i in 2:n_frame){
   res_gif <- c(res_gif, combo_gif)
 }
 magick::image_write(res_gif, path = path_res)
+
+diffs_by_play %>% 
+  group_by(is_target) %>% 
+  summarize(across(prob_diff_wt, list(p50 = median, p75 = ~quantile(.x, 0.3), p90 = ~quantile(.x, 0.1))))
+diffs_by_play %>% 
+  .filter_example() %>% 
+  filter(nfl_id == !!nfl_id_example)
+probs_dists_end %>% 
+  .filter_example() %>% 
+  filter(nfl_id_d == !!nfl_id_example)
 
 players_from_tracking_slim <-
   players_from_tracking %>% 
@@ -200,7 +219,7 @@ specific_traces_example
 .commont_example_theme_layers <- function(...) {
   list(
     ...,
-    geom_line(size = 1),
+    # geom_line(size = 1),
     facet_grid(name ~ lab, scales = 'free_y', switch = 'y'),
     theme(
       plot.title.position = 'plot',
@@ -220,6 +239,7 @@ viz_tp_generic_example <-
   generic_traces_example %>% 
   ggplot() +
   aes(x = frame_id, y = value) +
+  geom_line(size = 1) +
   .commont_example_theme_layers() +
   labs(
     title = 'dTPOE factors'
@@ -246,16 +266,18 @@ tpoe_pri_opp_example <- specific_traces_example_pri_opp_wtp_last$value - specifi
 
 viz_tp_specific_example <-
   specific_traces_example_sec %>% 
+  filter(value != 0) %>% 
   ggplot() +
   aes(x = frame_id, y = value, group = lab_d, color = lab_d) +
+  geom_line(size = 1) +
   .commont_example_theme_layers() +
   geom_line(
-    data = specific_traces_example_pri,
+    data = specific_traces_example_pri %>% filter(value != 0),
     inherit.aes = TRUE,
     size = 3,
   ) +
   geom_text(
-    data = specific_traces_example_pri_opp_wtp_first,
+    data = specific_traces_example_pri_opp_wtp_first %>% filter(value != 0),
     aes(y = value + 0.01, label = scales::number(value, accuracy = 0.001)),
     # vjust = 1,
     color = 'black',
@@ -263,7 +285,7 @@ viz_tp_specific_example <-
     size = pts(14)
   ) +
   geom_text(
-    data = specific_traces_example_pri_opp_wtp_last,
+    data = specific_traces_example_pri_opp_wtp_last %>% filter(value != 0),
     aes(y = value + 0.03, label = scales::number(value, accuracy = 0.001)),
     # vjust = 1,
     color = 'black',
@@ -271,7 +293,7 @@ viz_tp_specific_example <-
     size = pts(14)
   ) +
   geom_text(
-    data = specific_traces_example_pri_opp_wtp_last,
+    data = specific_traces_example_pri_opp_wtp_last %>% filter(value != 0),
     aes(y = 0.15, label = sprintf('dTPOE = %s', scales::number(!!tpoe_pri_opp_example, accuracy = 0.001))),
     # vjust = 1,
     color = 'black',
@@ -355,13 +377,25 @@ diffs_by_player_wide <-
   relocate(nfl_id, display_name, team, grp, n, tpoe, rnk_grp) %>% 
   arrange(grp, rnk_grp)
 
-defenders_top_pff <-
-  tibble(
-    display_name = c('Stephon Gilmore', 'Desmond King', 'Chris Harris', 'Kareem Jackson', 'Byron Jones', 'Jason McCourty', 'Kyle Fuller', 'Patrick Peterson', 'Bryce Callahan', 'Johnathan Joseph', 'Prince Amukamara', 'Denzel Ward', 'Marlon Humphrey', 'Casey Hayward', 'Pierre Desir', 'Xavien Howard', 'A.J. Bouye', 'Darius Slay', 'Trumaine Johnson', 'Marshon Lattimore', 'Steven Nelson', 'William Jackson', 'Adoree\' Jackson', 'Jalen Ramsey', 'Jaire Alexander')
-  ) %>% 
-  mutate(rnk_pff = row_number())
+# defenders_top_pff <-
+#   tibble(
+#     display_name = c('Stephon Gilmore', 'Desmond King', 'Chris Harris', 'Kareem Jackson', 'Byron Jones', 'Jason McCourty', 'Kyle Fuller', 'Patrick Peterson', 'Bryce Callahan', 'Johnathan Joseph', 'Prince Amukamara', 'Denzel Ward', 'Marlon Humphrey', 'Casey Hayward', 'Pierre Desir', 'Xavien Howard', 'A.J. Bouye', 'Darius Slay', 'Trumaine Johnson', 'Marshon Lattimore', 'Steven Nelson', 'William Jackson', 'Adoree\' Jackson', 'Jalen Ramsey', 'Jaire Alexander')
+#   ) %>% 
+#   mutate(rnk_pff = row_number())
 
-diffs_by_player_wide %>% 
-  inner_join(defenders_top_pff)
+# diffs_by_player_wide_old <- .path_data_small_csv('tpoe_player_rankings') %>% read_csv()
+# 
+# 
+# bind_rows(
+#   diffs_by_player_wide_old %>% mutate(src = 'old'),
+#   diffs_by_player_wide %>% mutate(src = 'new')
+# ) %>% 
+#   select(nfl_id, src, rnk_grp, grp) %>% 
+#   pivot_wider(names_from = src, values_from = rnk_grp) %>% 
+#   select(-nfl_id) %>% 
+#   nest(data = -grp) %>% 
+#   mutate(res = map(data, ~corrr::correlate(.x, method = 'spearman'))) %>% 
+#   select(grp, res) %>% 
+#   unnest(res)
 
 write_csv(diffs_by_player_wide, .path_data_small_csv('tpoe_player_rankings'), na = '')

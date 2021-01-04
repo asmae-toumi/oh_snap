@@ -1,5 +1,4 @@
 
-
 source('scripts/target_prob_setup.R')
 tpoe <- file.path('data', 'target_prob', 'small', 'tpoe_player_rankings.csv') %>% readr::read_csv()
 dpoe <- file.path('data', 'catch_prob', 'dpoe_arrival_player_rankings.csv') %>% readr::read_csv()
