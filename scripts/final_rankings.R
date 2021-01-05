@@ -4,7 +4,7 @@ tpoe <- file.path('data', 'target_prob', 'small', 'tpoe_player_rankings.csv') %>
 cpoe <- file.path('data', 'catch_prob', 'dpoe_arrival_player_rankings.csv') %>% readr::read_csv()
 # roster <- nflfastR::fast_scraper_roster(seasons = 2018)
 # roster %>% filter(team == 'NE', position %in% c('SS', 'FS'))
-db_grps <- import_nflfastr_cb_groups()
+db_grps <- import_nflfastr_db_groups()
 
 labels <-
   tpoe %>% 
@@ -17,7 +17,7 @@ xpoe <-
     tpoe %>%
       select(nfl_id, xpoe = tpoe) %>% 
       mutate(prefix = 't'),
-    dpoe %>% 
+    cpoe %>% 
       select(nfl_id, xpoe = dpoe_arr) %>% 
       mutate(prefix = 'c')
   ) %>% 
@@ -109,6 +109,13 @@ tb <-
       columns = vars(grp_rnk)
     ),
     footnote = 'NE players included (regardless of rank) for comparison.'
+  ) %>% 
+  gt::tab_source_note(
+    source_note = gt::md('{nflfastR} served as the source for position groups and teams.')
+  ) %>% 
+  gt::tab_header(
+    title = gt::md('**Top 10 Cornerback and Safeties**'),
+    subtitle = 'Composite Rank of dTPOE and dCPOE Ranks'
   ) %>% 
   gt::tab_options(
     row_group.font.weight = 'bold'

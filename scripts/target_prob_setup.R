@@ -2147,7 +2147,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       .prep_viz_data() %>% 
       ggplot() +
       aes(y = feature_lab, x = shap_value) +
-      geom_col() +
+      geom_col(fill = '#ffa3af', color = '#ffa3af') +
       scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
       # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
       theme(
