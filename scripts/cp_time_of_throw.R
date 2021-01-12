@@ -229,6 +229,10 @@ df_cp_throw_filt %>%
   ## still ~120 rows with missing data ¯\_(ツ)_/¯
   drop_na()
 
+# adding weather
+# weather obtained from https://github.com/ThompsonJamesBliss/WeatherData 
+# temperature, humidity, precipitation, wind speed all averaged over a game 
+
 weather <- read_csv("data/weather/weather_2018.csv")
 
 df_cp_throw_filt <- df_cp_throw_filt %>% 
