@@ -1647,7 +1647,7 @@ binary_fct_to_lgl <- function(x) {
 .get_feature_labs <- memoise::memoise({function() {
   tibble(
     feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
-    feature_lab = c('relative target share rank', 'receiver x', 'receiver y', 'distance between ball and receiver', 'distance between ball cand losest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
+    feature_lab = c('relative target share rank', 'receiver x', 'receiver y (relative to line of scrimmage)', 'distance between ball and receiver', 'distance between ball cand losest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
   )
 }})
 
@@ -1993,7 +1993,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     xgboost::xgb.save(fit, path_fit)
     xgboost::xgb.config(fit) %>% jsonlite::write_json(path_fit_config)
   } else {
-    fit <- xgboost::xgb.load(path_fit)
+    fit2 <- xgboost::xgb.load(path_fit)
   }
   
   # TODO: Make this compatible with plays with NA targeted receiver.

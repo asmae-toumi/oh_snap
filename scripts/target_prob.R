@@ -32,7 +32,7 @@ features <-
   weeks %>% 
   do_by_week(
     f = do_generate_features_at_events,
-    overwrite = TRUE,
+    # overwrite = TRUE,
     path = .path_data_big_parquet('target_prob_features_all')
   )
 
