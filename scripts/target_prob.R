@@ -65,6 +65,14 @@ probs_dists <- do_combine_target_probs_and_dists()
 
 plays <- import_plays()
 
+games <- import_games()
+game_id <- games %>% filter(week == 15) %>% filter(visitor_team_abbr == 'ARI') %>% pull(game_id)
+plays %>% 
+  filter(game_id == !!game_id, quarter == 2) %>% 
+  pull(play_id)
+game_id_example <- 2018121600
+play_id_example <- 1125
+
 # Only need to import this if didn't run stuff above in the same session.
 players_from_tracking <- import_players_from_tracking()
 
@@ -140,6 +148,7 @@ play_id_example <- 2716
 animate_play(
   game_id = game_id_example, 
   play_id = play_id_example, 
+  team_colors = FALSE,
   target_prob = TRUE
 )
 
@@ -151,22 +160,22 @@ tp_mgif <- magick::image_read(path_tp)
 
 n_frame <- play_mgif %>% magick::image_info() %>% nrow()
 stopifnot(n_frame == (tp_mgif %>% magick::image_info() %>% nrow()))
-res_gif <- magick::image_append(c(play_mgif[1], tp_mgif[1]), stack = TRUE)
+res_gif <- magick::image_append(c(play_mgif[1], tp_mgif[1]), stack = F)
 for(i in 2:n_frame){
-  combo_gif <- magick::image_append(c(play_mgif[i], tp_mgif[i]), stack = TRUE)
+  combo_gif <- magick::image_append(c(play_mgif[i], tp_mgif[i]), stack = F)
   res_gif <- c(res_gif, combo_gif)
 }
 magick::image_write(res_gif, path = path_res)
 
-diffs_by_play %>% 
-  group_by(is_target) %>% 
-  summarize(across(prob_diff_wt, list(p50 = median, p75 = ~quantile(.x, 0.3), p90 = ~quantile(.x, 0.1))))
-diffs_by_play %>% 
-  .filter_example() %>% 
-  filter(nfl_id == !!nfl_id_example)
-probs_dists_end %>% 
-  .filter_example() %>% 
-  filter(nfl_id_d == !!nfl_id_example)
+# diffs_by_play %>% 
+#   group_by(is_target) %>% 
+#   summarize(across(prob_diff_wt, list(p50 = median, p75 = ~quantile(.x, 0.3), p90 = ~quantile(.x, 0.1))))
+# diffs_by_play %>% 
+#   .filter_example() %>% 
+#   filter(nfl_id == !!nfl_id_example)
+# probs_dists_end %>% 
+#   .filter_example() %>% 
+#   filter(nfl_id_d == !!nfl_id_example)
 
 players_from_tracking_slim <-
   players_from_tracking %>% 
@@ -216,7 +225,7 @@ specific_traces_example <-
   )
 specific_traces_example
 
-.commont_example_theme_layers <- function(...) {
+.common_example_theme_layers <- function(...) {
   list(
     ...,
     # geom_line(size = 1),
@@ -240,14 +249,14 @@ viz_tp_generic_example <-
   ggplot() +
   aes(x = frame_id, y = value) +
   geom_line(size = 1) +
-  .commont_example_theme_layers() +
+  .common_example_theme_layers() +
   labs(
     title = 'dTPOE factors'
   )
 viz_tp_generic_example
 
-display_name_pri <- 'Stephon Gilmore'
-display_name_pri_opp <- 'Robby Anderson' # 'Stefon Diggs'
+display_name_pri <- 'Deone Bucannon'
+display_name_pri_opp <- 'Julio Jones' # 'Stefon Diggs'
 specific_traces_example_sec <-
   specific_traces_example %>% 
   filter(display_name_d != !!display_name_pri)
@@ -270,7 +279,7 @@ viz_tp_specific_example <-
   ggplot() +
   aes(x = frame_id, y = value, group = lab_d, color = lab_d) +
   geom_line(size = 1) +
-  .commont_example_theme_layers() +
+  .common_example_theme_layers() +
   geom_line(
     data = specific_traces_example_pri %>% filter(value != 0),
     inherit.aes = TRUE,
@@ -294,7 +303,7 @@ viz_tp_specific_example <-
   ) +
   geom_text(
     data = specific_traces_example_pri_opp_wtp_last %>% filter(value != 0),
-    aes(y = 0.15, label = sprintf('dTPOE = %s', scales::number(!!tpoe_pri_opp_example, accuracy = 0.001))),
+    aes(y = 0.35, label = sprintf('dTPOE = %s', scales::number(!!tpoe_pri_opp_example, accuracy = 0.001))),
     # vjust = 1,
     color = 'black',
     hjust = 1.1,
@@ -305,7 +314,7 @@ viz_tp_specific_example <-
   guides(color = guide_legend(title = '', override.aes = list(size = 3))) +
   theme(strip.text.x = element_blank()) +
   labs(
-    caption = 'Annotated: Gilmore\'s initial and final weighted target probabilities, used to compute dTPOE, for covering Anderson.',
+    # caption = 'Annotated: Burns\' initial and final weighted target probabilities, used to compute dTPOE, for covering Hill.',
     x = 'frame'
   )
 viz_tp_specific_example
