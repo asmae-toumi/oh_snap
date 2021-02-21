@@ -100,7 +100,7 @@
     res
   }
 
-.plot_pdp <- function(x, ...) {
+plot_pdp <- function(x, ...) {
   p <-
     .plot_ceteris_paribus_explainer(x$cp_profiles, ..., alpha = 0.1, size = 0.5, color = '#132f3c') +
     .show_aggregated_profiles(x$agr_profiles, ..., size = 2, color = '#ffa3af')

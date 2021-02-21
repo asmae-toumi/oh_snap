@@ -151,7 +151,7 @@ part$agr_profiles <- part$agr_profiles %>% .change_vname()
 
 p <- 
   part %>% 
-  .plot_pdp(variables = x_labs) +
+  plot_pdp(variables = x_labs) +
   labs(
     title = 'Target Probability Features', 
     y = 'Probability',
