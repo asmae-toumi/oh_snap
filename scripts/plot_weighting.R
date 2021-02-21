@@ -319,14 +319,21 @@ tracking_d_clipped_annotate <-
   filter(r < 20) %>% 
   mutate(idx = row_number(r)) %>% 
   arrange(r)
-tracking_d_clipped_annotate %>% 
+
+library(latex2exp)
+TeX("A $\\LaTeX$ formula: $\\frac{2hc^2}{\\lambda^5} \\, 
+               \\frac{1}{e^{\\frac{hc}{\\lambda k_B T}} - 1}$") %>% 
   ggplot() +
-  aes(x = 1, y = max(idx) - idx + 1) +
-  geom_text(
-    aes(label = glue::glue('d_{idx}j \text{and} {scales::number(r, accuracy = 1)}')),
-    parse = TRUE
-  ) +
-  theme_void()
+  aes(
+
+# tracking_d_clipped_annotate %>% 
+#   ggplot() +
+#   aes(x = 1, y = max(idx) - idx + 1) +
+#   geom_text(
+#     aes(label = glue::glue('d_{idx}j \text{and} {scales::number(r, accuracy = 1)}')),
+#     parse = TRUE
+#   ) +
+#   theme_void()
 ggplot() +
   annotate(
     geom = 'text',
