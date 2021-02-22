@@ -61,23 +61,20 @@ do_fit_catch_prob_model()
 }
 
 # eval stuff ----
-probs_dists <- do_combine_target_probs_and_dists()
+probs_dists <- do_combine_target_probs_and_dists(overwrite = TRUE)
 
 plays <- import_plays()
 
-games <- import_games()
-game_id <- games %>% filter(week == 15) %>% filter(visitor_team_abbr == 'ARI') %>% pull(game_id)
-plays %>% 
-  filter(game_id == !!game_id, quarter == 2) %>% 
-  pull(play_id)
-game_id_example <- 2018121600
-play_id_example <- 1125
+# Investigating plays manually
+# games <- import_games()
+# game_id <- games %>% filter(week == 15) %>% filter(visitor_team_abbr == 'ARI') %>% pull(game_id)
+# plays %>% 
+#   filter(game_id == !!game_id, quarter == 2) %>% 
+#   pull(play_id)
 
 # Only need to import this if didn't run stuff above in the same session.
 players_from_tracking <- import_players_from_tracking()
 
-# Gilmore's id is 2533062, per `import_players_from_tracking() %>% filter(display_name == 'Stephon Gilmore')`
-nfl_id_example <- 2533062
 probs_dists <-
   probs_dists %>%
   mutate(
@@ -136,10 +133,12 @@ if(FALSE) {
     filter(epa < 0) %>%
     head(20)
   
-# Play chosen based on above criteria. It also happens to be interesting cuz of the blitz component.
-game_id_example <- 2018112505
-play_id_example <- 2716
-
+# Anderson play
+# game_id_example <- 2018112505
+# play_id_example <- 2716
+# Julio play
+game_id_example <- 2018121600
+play_id_example <- 1125
 .filter_example <- function(data) {
   data %>% 
     filter(game_id == !!game_id_example, play_id == !!play_id_example)
@@ -166,16 +165,6 @@ for(i in 2:n_frame){
   res_gif <- c(res_gif, combo_gif)
 }
 magick::image_write(res_gif, path = path_res)
-
-# diffs_by_play %>% 
-#   group_by(is_target) %>% 
-#   summarize(across(prob_diff_wt, list(p50 = median, p75 = ~quantile(.x, 0.3), p90 = ~quantile(.x, 0.1))))
-# diffs_by_play %>% 
-#   .filter_example() %>% 
-#   filter(nfl_id == !!nfl_id_example)
-# probs_dists_end %>% 
-#   .filter_example() %>% 
-#   filter(nfl_id_d == !!nfl_id_example)
 
 players_from_tracking_slim <-
   players_from_tracking %>% 
@@ -314,7 +303,6 @@ viz_tp_specific_example <-
   guides(color = guide_legend(title = '', override.aes = list(size = 3))) +
   theme(strip.text.x = element_blank()) +
   labs(
-    # caption = 'Annotated: Burns\' initial and final weighted target probabilities, used to compute dTPOE, for covering Hill.',
     x = 'frame'
   )
 viz_tp_specific_example
@@ -385,12 +373,7 @@ diffs_by_player_wide <-
   ungroup() %>% 
   relocate(nfl_id, display_name, team, grp, n, tpoe, rnk_grp) %>% 
   arrange(grp, rnk_grp)
-
-# defenders_top_pff <-
-#   tibble(
-#     display_name = c('Stephon Gilmore', 'Desmond King', 'Chris Harris', 'Kareem Jackson', 'Byron Jones', 'Jason McCourty', 'Kyle Fuller', 'Patrick Peterson', 'Bryce Callahan', 'Johnathan Joseph', 'Prince Amukamara', 'Denzel Ward', 'Marlon Humphrey', 'Casey Hayward', 'Pierre Desir', 'Xavien Howard', 'A.J. Bouye', 'Darius Slay', 'Trumaine Johnson', 'Marshon Lattimore', 'Steven Nelson', 'William Jackson', 'Adoree\' Jackson', 'Jalen Ramsey', 'Jaire Alexander')
-#   ) %>% 
-#   mutate(rnk_pff = row_number())
+diffs_by_player_wide
 
 # diffs_by_player_wide_old <- .path_data_small_csv('tpoe_player_rankings') %>% read_csv()
 # 
