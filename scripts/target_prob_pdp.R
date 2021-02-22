@@ -143,15 +143,20 @@ names(part$cp_profiles) <- nms
   data %>% 
     left_join(feature_labs %>% rename(`_vname_` = feature), by = '_vname_') %>% 
     select(-`_vname_`) %>% 
-    rename(`_vname_` = feature_lab)
+    rename(`_vname_` = feature_lab) %>% 
+    as_tibble()
 }
 
 part$cp_profiles <- part$cp_profiles %>% .change_vname()
 part$agr_profiles <- part$agr_profiles %>% .change_vname()
-
+part$cp_profiles %>% as_tibble() %>% count(`_ids_`) %>% tibble::rownames_to_column()
 p <- 
   part %>% 
   plot_pdp(variables = x_labs) +
+  theme(
+    text = element_text(family = 'Arial Narrow'),
+    axis.text.y = element_blank()
+  ) +
   labs(
     title = 'Target Probability Features', 
     y = 'Probability',
