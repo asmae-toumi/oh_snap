@@ -397,7 +397,7 @@ save_plot <-
 save_animation <-
   function(anim,
            height = 600,
-           width = width,
+           width = height,
            fps = 10,
            end_pause = fps,
            file = deparse(substitute(anim)),
@@ -1644,8 +1644,46 @@ binary_fct_to_lgl <- function(x) {
 
 .get_feature_labs <- memoise::memoise({function() {
   tibble(
-    feature = c('idx_o', 'x', 'y', 'dist_ball', 'dist_ball_d1_naive', 'qb_o', 'dist_d1_naive', 'o', 'dist_d2_naive', 'dist_ball_d2_naive', 'los', 'sec', 'qb_x', 'qb_y', 'x_rusher', 'o_d1_naive', 'dist_rusher', 'y_rusher'),
-    feature_lab = c('relative target share rank', 'receiver x', 'receiver y (relative to line of scrimmage)', 'distance between ball and receiver', 'distance between ball cand losest defender', 'QB orientation', 'distance between receiver and closest defender', 'receiver orientation', 'distance between receiver and second closest defender', 'distance between ball and second closest defender', 'line of scrimmage', 'seconds after snap', 'QB x', 'QB y', 'nearest rusher x', 'closest defender orientation', 'distance between QB and nearest rusher', 'nearest rusher y')
+    feature = c(
+      'idx_o',
+      'x',
+      'y',
+      'dist_ball',
+      'dist_ball_d1_naive',
+      'qb_o',
+      'dist_d1_naive',
+      'o',
+      'dist_d2_naive',
+      'dist_ball_d2_naive',
+      'los',
+      'sec',
+      'qb_x',
+      'qb_y',
+      'x_rusher',
+      'o_d1_naive',
+      'dist_rusher',
+      'y_rusher'
+    ),
+    feature_lab = c(
+      'Target share',
+      'Receiver yardline position, relative to line of scrimmage',
+      'Receiver position along the short axis of the field, relative to initial position of the ball',
+      'Yards between receiver and QB',
+      'Yards between QB and closest defender',
+      'QB orientation',
+      'Yards between receiver and closest defender',
+      'Receiver orientation',
+      'Yards between receiver and second closest defender',
+      'Yards between QB and second closest defender',
+      'Line of scrimmage',
+      'Seconds after snap',
+      'QB yardline position, relative to line of scrimmage',
+      'QB position along the short axis of the field, relative to initial position of the bal',
+      'Nearest rusher yardline position, relative to line of scrimmage',
+      'Closest defender orientation',
+      'Yards between QB and nearest rusher',
+      'Nearest rusher position along the short axis of the field, relative to initial position of the ball'
+    )
   )
 }})
 
@@ -1747,7 +1785,6 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
         'dist_ball_d1_naive',
         'dist_d2_naive',
         'dist_ball_d2_naive',
-        # 'rnk_target',
         extra_features
       )
     )
@@ -1903,8 +1940,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
   } else {
     res_tune_cv <- path_res_tune_cv %>% readr::read_rds()
   }
-  
-  # 19th
+
   # These can be used in the next 2 ifelse clauses. Easiest to just always run this.
   # res_tune_cv %>% mutate(idx = row_number()) %>% relocate(idx) %>% slice_min(logloss_tst)
   res_cv_best <- res_tune_cv %>% slice_min(logloss_tst)
@@ -1991,7 +2027,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     xgboost::xgb.save(fit, path_fit)
     xgboost::xgb.config(fit) %>% jsonlite::write_json(path_fit_config)
   } else {
-    fit2 <- xgboost::xgb.load(path_fit)
+    fit <- xgboost::xgb.load(path_fit)
   }
   
   # TODO: Make this compatible with plays with NA targeted receiver.
@@ -2050,6 +2086,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
       set.seed(42)
       # browser()
       probs <- probs %>% sample_frac(0.1)
+      
       set.seed(42)
       features_df <-
         features_x %>% 
@@ -2113,6 +2150,7 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     shap <- path_shap %>% arrow::read_parquet()
   }
   
+  n_feature <- 10
   shap_agg_by_feature <-
     shap %>% 
     group_by(feature) %>% 
@@ -2123,14 +2161,22 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
     mutate(
       across(shap_value, list(rnk = ~row_number(desc(.x))))
     ) %>% 
-    arrange(shap_value_rnk)
+    arrange(shap_value_rnk) %>% 
+    head(n_feature)
   shap_agg_by_feature
   
   feature_labs <- .get_feature_labs()
+  n_total <- feature_labs %>% nrow()
+  n_other <- n_total - n_feature
   
   .prep_viz_data <- function(data) {
     data %>% 
-      left_join(feature_labs) %>% 
+      left_join(
+        feature_labs # %>% 
+          # add_row(
+          #   feature = 'other', feature_lab = sprintf('%s other features', n_other)
+          # )
+      ) %>% 
       mutate(
         across(
           feature_lab, ~forcats::fct_reorder(.x, -shap_value_rnk)
@@ -2140,26 +2186,44 @@ do_fit_target_prob_model <- function(cnd = 'all', plays = import_plays(), overwr
 
   
   if(!file.exists(path_shap_agg) & !overwrite) {
+    color_blue <- '#18384b'
     viz_shap_agg <- 
       shap_agg_by_feature %>% 
+      # add_row(
+      #   feature = 'other', 
+      #   shap_value = 0, 
+      #   shap_value_rnk = n_feature + 1L
+      # ) %>% 
       .prep_viz_data() %>% 
       ggplot() +
       aes(y = feature_lab, x = shap_value) +
-      geom_col(fill = '#ffa3af', color = '#ffa3af') +
-      scale_y_discrete(labels = function(x) str_wrap(x, width = 30)) +
-      # hrbrthemes::theme_ipsum(base_family = '', base_size = 12) +
+      geom_col(fill = '#ce1255', width = 0.5) +
+      scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +
       theme(
-        axis.text.y = element_text(size = 12, lineheight = 1),
-        panel.grid.major.y = element_blank()
+        text = element_text(size = 16, color = color_blue),
+        axis.text.y = element_text(size = 16, lineheight = 1, color = color_blue),
+        plot.caption = element_text(size = 16, hjust = 1, color = color_blue),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.text.x = element_blank()
       ) +
       labs(
         title = 'Target probability model feature importance',
-        # subtitle = caption,
-        x = 'mean(|SHAP value|)',
+        caption = '8 other features not shown',
+        x = NULL,
         y = NULL
-      )
+      ) # + 
+      # gganimate::transition_reveal(-shap_value)
     viz_shap_agg
-    
+    # save_animation(
+    #   p, 
+    #   height = 800,
+    #   width = 400,
+    #   nframe = 30,
+    #   end_pause = 10,
+    #   path = str_replace(path_shap_agg, 'png', 'gif'),
+    #   ext = 'gif'
+    # )
     save_plot(
       viz_shap_agg,
       path = path_shap_agg,

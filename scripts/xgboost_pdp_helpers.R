@@ -8,12 +8,16 @@
 
 # ingredients:::plot.ceteris_paribus_explainer
 .plot_numerical_ceteris_paribus <- 
-  function(all_profiles, facet_ncol = NULL, ...) {
+  function(all_profiles, facet_ncol = NULL, ..., max_x = NULL) {
     
     tmp <- as.character(all_profiles$`_vname_`)
     for (i in seq_along(tmp)) {
       all_profiles$`_x_`[i] <- all_profiles[i, tmp[i]]
     }
+    if(!is.null(max_x)) {
+      all_profiles <- all_profiles %>% filter(`_x_` <= max_x)
+    }
+
     p <-
       ggplot(
         all_profiles,
@@ -23,8 +27,9 @@
           group = paste(`_ids_`, `_label_`)
         )
       ) + 
-      geom_line(
+      geom_step(
         data = all_profiles,
+        direction = 'vh',
         ...
       ) + 
       facet_wrap(
@@ -91,9 +96,10 @@
     all_variables <- .check_all_variables(all_variables, variables)
     aggregated_profiles <- aggregated_profiles[aggregated_profiles$`_vname_` %in% all_variables, ]
     res <- 
-      geom_line(
+      geom_step(
         data = aggregated_profiles,
         aes(y = `_yhat_`),
+        direction = 'vh',
         ...,
         color = color
       )
@@ -102,6 +108,6 @@
 
 plot_pdp <- function(x, ...) {
   p <-
-    .plot_ceteris_paribus_explainer(x$cp_profiles, ..., alpha = 0.1, size = 0.5, color = '#132f3c') +
-    .show_aggregated_profiles(x$agr_profiles, ..., size = 2, color = '#ffa3af')
+    .plot_ceteris_paribus_explainer(x$cp_profiles, ..., alpha = 0.1, size = 0.5, color = 'grey') +
+    .show_aggregated_profiles(x$agr_profiles, size = 2, color = '#ce1255')
 }

@@ -111,7 +111,7 @@ features_mat_filt <-
   )
 
 # pdp, dalex ----
-cols_x <- c('y', 'dist_ball', 'dist_d1_naive')
+cols_x <- c('dist_ball', 'dist_d1_naive')
 feature_labs <- .get_feature_labs()
 x_labs <- feature_labs %>% filter(feature %in% cols_x) %>% deframe()
 
@@ -129,7 +129,7 @@ set.seed(42)
 part <-
   DALEX::model_profile(
     explainer,
-    N = 1000, # How many lines
+    N = 100, # How many lines
     variable = cols_x,
     type = 'partial'
   )
@@ -150,23 +150,45 @@ names(part$cp_profiles) <- nms
 part$cp_profiles <- part$cp_profiles %>% .change_vname()
 part$agr_profiles <- part$agr_profiles %>% .change_vname()
 part$cp_profiles %>% as_tibble() %>% count(`_ids_`) %>% tibble::rownames_to_column()
+
+max_x <- 
+  part$agr_profiles %>% 
+  filter(`_vname_` == 'Yards between receiver and closest defender') %>% 
+  slice_max(`_x_`) %>% 
+  pull(`_x_`)
+part$agr_profiles <- part$agr_profiles %>% filter(`_x_` <= max_x)
+
+color_blue <- '#18384b'
 p <- 
   part %>% 
-  plot_pdp(variables = x_labs) +
+  plot_pdp(variables = x_labs, max_x = max_x) +
   theme(
-    text = element_text(family = 'Arial Narrow'),
+    text = element_text(size = 16, color = color_blue),
+    strip.text.x = element_text(size = 16, color = color_blue),
+    axis.text.x = element_text(color = color_blue),
+    axis.title.y = element_text(size = 16, color = color_blue),
     axis.text.y = element_blank()
   ) +
   labs(
-    title = 'Target Probability Features', 
+    title = 'Target probability features', 
     y = 'Probability',
     x = NULL
   )
 
+save_animation(
+  p + gganimate::transition_reveal(`_x_`), 
+  height = 800,
+  width = 400,
+  nframe = 30,
+  end_pause = 10,
+  file = 'tp_pdp_dalex',
+  ext = 'gif'
+)
+
 ggsave(
   plot = p,
   filename = .path_figs_png('tp_pdp_dalex'),
-  width = 7,
+  width = 6,
   height = 10,
   # cairo for the sharper image quality
   type = 'cairo'
