@@ -7,12 +7,13 @@ theme_set(hrbrthemes::theme_ipsum(base_family = '', base_size = 14))
 theme_update(
   plot.margin = margin(10, 10, 10, 10),
   plot.title = element_text(size = 18),
-  plot.subtitle = element_text(size = 14),
+  plot.subtitle = element_text(size = 18),
   plot.title.position = 'plot',
   axis.text = element_text(size = 14),
   axis.title = element_text(size = 14),
   axis.title.x = element_text(size = 14),
   axis.title.y = element_text(size = 14),
+  plot.caption = element_text(size = 14),
   plot.caption.position = 'plot'
 )
 
@@ -626,9 +627,6 @@ animate_play <-
       ymax_bound <- ymax - max_y
       buffer <- max(0, ymin_bound, ymax_bound)
     }
-    
-    home_team <- game$home_team_abbr
-    away_team <- game$visitor_team_abbr
     
     home_team <- game$home_team_abbr
     away_team <- game$visitor_team_abbr
@@ -2764,6 +2762,7 @@ do_combine_target_probs_and_dists <-
       left_join(secs %>% select(game_id, play_id, frame_id_start, frame_id_diff)) %>% 
       mutate(frame_id_frac = (frame_id - frame_id_start) / frame_id_diff)
     probs_aug
+    # Data is too big for my RAM.
     rm('catch_probs', 'probs_grp', 'probs_start', 'probs_end', 'secs')
     
     # Could change this.
@@ -2778,22 +2777,43 @@ do_combine_target_probs_and_dists <-
       anti_join(rushers %>% select(-frame_id) %>% rename(nfl_id_d = nfl_id)) %>% 
       distinct(game_id, play_id, frame_id, nfl_id, nfl_id_d, dist_d)
     min_dists_init
-    
-    # min_dists_init %>% filter(game_id == first(game_id), play_id == first(play_id), frame_id == first(frame_id))
+
+    # # New method
+    # # game_id <- 2018121600
+    # # play_id <- 1125
+    # # frame_id = 36
+    # # meta <- tibble(game_id = game_id, play_id = play_id, frame_id = frame_id)
+    # # browser()
     min_dists <-
-      min_dists_init %>% 
-      group_by(game_id, play_id, frame_id, nfl_id_d) %>%
+      min_dists_init %>%
+      # semi_join(meta) %>%
+      # Didn't have this in submission, but should have put this line here instead of filtering after-the-fact.
+      filter(dist_d <= 20) %>%
+      # # Normalize per receiver.
+      group_by(game_id, play_id, frame_id, nfl_id) %>%
       mutate(
         dist_d_total = sum(1 / dist_d^.power),
-        wt = (1 / dist_d^.power) / dist_d_total
-      ) %>%
-      ungroup() %>% 
-      # filter(dist_d <= 20) %>% 
-      # Zero out some weights, per James' feedback.
-      mutate(across(wt, ~if_else(dist_d >= 20, 0, .x))) %>% 
+        wt = (1 / dist_d^.power) / dist_d_total,
+        wt = wt / sum(wt)
+      ) %>% 
       select(-dist_d_total)
     min_dists
     
+    # # Old method
+    # min_dists <-
+    #   min_dists_init %>% 
+    #   group_by(game_id, play_id, frame_id, nfl_id_d) %>%
+    #   mutate(
+    #     dist_d_total = sum(1 / dist_d^.power),
+    #     wt = (1 / dist_d^.power) / dist_d_total
+    #   ) %>%
+    #   ungroup() %>% 
+    #   # filter(dist_d <= 20) %>% 
+    #   # Zero out some weights, per James' feedback.
+    #   mutate(across(wt, ~if_else(dist_d >= 20, 0, .x))) %>% 
+    #   select(-dist_d_total)
+    # min_dists
+
     min_dists_start <-
       min_dists %>% 
       group_by(game_id, play_id, nfl_id, nfl_id_d) %>% 
@@ -2807,6 +2827,7 @@ do_combine_target_probs_and_dists <-
           select(game_id, play_id, nfl_id, nfl_id_d, wt, dist_d) %>% 
           rename_with(~sprintf('%s_%s', .x, 'start'), -c(game_id, play_id, nfl_id, nfl_id_d))
       )
+    # Data is too big for my RAM.
     rm('min_dists', 'min_dists_init', 'min_dists_start', 'personnel_and_rushers', 'rushers')
     rm('ids', 'probs')
     
@@ -2837,7 +2858,7 @@ do_combine_target_probs_and_dists <-
 
 import_probs_dists <- function() {
   .path_data_big_parquet(
-    sprintf('probs_dists')
+    'probs_dists'
   ) %>%
     arrow::read_parquet() %>%
     mutate(
@@ -2862,6 +2883,15 @@ import_nflfastr_db_groups <- memoise::memoise({function(seasons = 2018, position
     mutate(n = n()) %>% 
     ungroup() %>% 
     filter(n == 1L) %>% 
-    select(-n)
+    select(-n) %>% 
+    mutate(
+      across(
+        grp,
+        ~case_when(
+          display_name == 'Kareem Jackson' ~ 'CB',
+          TRUE ~ .x
+        )
+      )
+    )
 }})
 
