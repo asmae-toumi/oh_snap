@@ -52,17 +52,10 @@ defenders_top_pff <-
   mutate(rnk_pff = row_number())
 defenders_top_pff
 
-# maxes <-
-#   xpoe_wide %>% 
-#   filter(grp_rnk <= 10) %>% 
-#   summarize(across(matches('grp_rnk'), list(max = max), na.rm = TRUE))
-# maxes
-
 xpoe_wide_filt <-
   xpoe_wide %>% 
-  filter(grp_rnk <= 10 | display_name %in% c('Jonathan Jones', 'Jason McCourty', 'Patrick Chung', 'Devin McCourty')) %>% 
+  filter(grp_rnk <= 10) %>%
   select(
-    # label,
     display_name,
     grp,
     team,
@@ -85,6 +78,29 @@ xpoe_wide_pff <-
     rnk_pff
   ) %>% 
   arrange(rnk_pff)
+
+.add_logo_transform <- function(tab) {
+  tab %>% 
+    gt::text_transform(
+      locations = gt::cells_body(
+        vars(logo)
+      ),
+      fn = function(x) {
+        gt::web_image(
+          url = x,
+          height = 25
+        )
+      }
+    )
+}
+
+.add_common_tab_options <- function(tab, ...) {
+  tab %>% 
+    gt::tab_options(
+      heading.title.font.size = gt::px(30),
+      ...
+    )
+}
 
 .get_valid_grps <- function() {
   c('CB', 'S')
@@ -113,33 +129,14 @@ grps <- .get_valid_grps()
           grp_rnk = gt::md('**Group Rank**')
         )
     ) %>% 
-    gt::tab_footnote(
-      locations = gt::cells_column_labels(
-        columns = vars(grp_rnk)
-      ),
-      footnote = 'NE players included (regardless of rank) for comparison.'
-    ) %>% 
-    gt::text_transform(
-      locations = gt::cells_body(
-        vars(logo)
-      ),
-      fn = function(x) {
-        gt::web_image(
-          url = x,
-          height = 25
-        )
-      }
-    ) %>% 
     gt::tab_source_note(
-      source_note = gt::md('{nflfastR} is source for position groups and teams.')
+      source_note = gt::md('{nflfastR} is source for position groups and teams, with the exception of Kareem Jackson.')
     ) %>% 
     gt::tab_header(
-      title = gt::md(glue::glue('**Top 10 {grp_lab}**')),
-      subtitle = 'Composite Rank of Coverage and Contest Ranks'
+      title = gt::md(glue::glue('**Top 10 {grp_lab}**'))
     ) %>% 
-    gt::tab_options(
-      row_group.font.weight = 'bold'
-    )
+    .add_logo_transform() %>% 
+    .add_common_tab_options()
   gt::gtsave(res, filename = file.path('figs', glue::glue('final_{tolower(grp)}_rankings.png')))
   res
 }
@@ -147,13 +144,13 @@ grps <- .get_valid_grps()
 .get_valid_pages <- function() {
   c('1', '2')
 }
-.validate_grp <- function(x = .get_valid_pages(), ...) {
+.validate_page <- function(x = .get_valid_pages(), ...) {
   match.arg(x, ...)
 }
 
 pages <- .get_valid_pages()
 .do_gt_pff <- function(page = c('1', '2')) {
-  # .validate_page(page)
+  .validate_page(page)
   if(page == '1') {
     page_min <- 1
     page_max <- 12
@@ -179,27 +176,14 @@ pages <- .get_valid_pages()
           rnk_pff = gt::md('**PFF Rank**')
         )
     ) %>% 
-    gt::text_transform(
-      locations = gt::cells_body(
-        vars(logo)
-      ),
-      fn = function(x) {
-        gt::web_image(
-          url = x,
-          height = 25
-        )
-      }
-    ) %>% 
     gt::tab_header(
       title = gt::md(glue::glue('**Top {page_lab} PFF Cornerbacks**')),
-      subtitle = 'Composite Rank of Coverage and Contest Ranks'
     ) %>% 
-    gt::tab_options(
-      row_group.font.weight = 'bold'
-    )
+    .add_logo_transform() %>% 
+    .add_common_tab_options()
   gt::gtsave(res, filename = file.path('figs', glue::glue('final_rankings_pff_{page_lab}.png')))
   res
 }
 
-# grps %>% walk(.do_gt_by_grp)
+grps %>% walk(.do_gt_by_grp)
 pages %>% walk(.do_gt_pff)
